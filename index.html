@@ -1,0 +1,1531 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Millhaven Transit Authority</title>
+<style>
+  :root {
+    --navy: #17223b;
+    --navy-light: #223258;
+    --amber: #e8a33d;
+    --amber-dim: #a97a2e;
+    --off-white: #f2ede3;
+    --line-grey: #4a5570;
+    --locked-grey: #5c6478;
+    --ok-green: #4f8a5b;
+    --warn-red: #b3453f;
+    --font-ui: 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
+    --font-mono: 'Consolas', 'SF Mono', Menlo, monospace;
+  }
+
+  * { box-sizing: border-box; }
+
+  html, body {
+    margin: 0;
+    padding: 0;
+    height: 100%;
+    background: var(--navy);
+    color: var(--off-white);
+    font-family: var(--font-ui);
+    overflow: hidden;
+  }
+
+  #app {
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    height: 100dvh;
+  }
+
+  /* HEADER */
+  header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 16px;
+    background: var(--navy-light);
+    border-bottom: 2px solid var(--amber);
+    flex-shrink: 0;
+    gap: 8px;
+  }
+
+  header .title {
+    font-weight: 700;
+    letter-spacing: 0.03em;
+    font-size: 14px;
+    text-transform: uppercase;
+    color: var(--amber);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .stat-group {
+    display: flex;
+    gap: 16px;
+    font-family: var(--font-mono);
+    font-size: 13px;
+  }
+
+  .stat {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    line-height: 1.2;
+  }
+
+  .stat .label {
+    font-size: 9px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: #9aa3bd;
+  }
+
+  .stat .value {
+    font-size: 14px;
+    font-weight: 700;
+  }
+
+  .stat.cash .value { color: var(--ok-green); }
+  .stat.rep .value { color: var(--amber); }
+
+  /* MAIN LAYOUT */
+  main {
+    flex: 1;
+    display: flex;
+    min-height: 0;
+  }
+
+  #map-container {
+    flex: 1;
+    background: var(--navy);
+    position: relative;
+    overflow: hidden;
+    touch-action: manipulation;
+  }
+
+  #map-svg {
+    width: 100%;
+    height: 100%;
+    display: block;
+  }
+
+  .underlay { pointer-events: none; }
+  .underlay-image { opacity: 0.85; }
+
+  .track-hit {
+    stroke: transparent;
+    stroke-width: 26;
+    fill: none;
+  }
+
+  .track-line {
+    stroke: var(--line-grey);
+    stroke-width: 5;
+    stroke-linecap: round;
+    stroke-dasharray: 2 10;
+    fill: none;
+  }
+
+  .track-line.built {
+    stroke: var(--amber);
+    stroke-dasharray: none;
+  }
+
+  .track-group.buildable .track-line {
+    stroke: var(--navy-light);
+  }
+
+  .track-group.buildable:hover .track-line {
+    stroke: var(--warn-red);
+  }
+
+  #map-svg.build-mode .track-group.buildable {
+    cursor: pointer;
+  }
+
+  .train-icon {
+    cursor: default;
+  }
+
+  .train-icon rect {
+    fill: var(--amber);
+    stroke: var(--navy);
+    stroke-width: 2;
+  }
+
+  .station-node {
+    cursor: pointer;
+  }
+
+  #map-svg.route-edit-mode .station-node.unlocked {
+    cursor: crosshair;
+  }
+
+  .station-node circle.base {
+    stroke-width: 4;
+  }
+
+  .station-node.unlocked circle.base {
+    fill: var(--navy);
+    stroke: var(--amber);
+  }
+
+  .station-node.locked circle.base {
+    fill: var(--off-white);
+    stroke: var(--navy-light);
+    stroke-dasharray: 4 3;
+  }
+
+  .station-node.selected circle.base {
+    stroke: var(--warn-red);
+    stroke-width: 5;
+    stroke-dasharray: none;
+  }
+
+  .station-node text.label {
+    fill: var(--navy);
+    font-family: var(--font-ui);
+    font-size: 13px;
+    font-weight: 700;
+    pointer-events: none;
+    stroke: rgba(242, 237, 227, 0.85);
+    stroke-width: 3px;
+    paint-order: stroke;
+  }
+
+  .station-node.locked text.label {
+    fill: var(--navy-light);
+    opacity: 0.75;
+  }
+
+  .station-node text.number {
+    fill: var(--amber);
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-weight: 700;
+    pointer-events: none;
+    text-anchor: middle;
+    dominant-baseline: middle;
+  }
+
+  .station-node.locked text.number {
+    fill: var(--navy-light);
+  }
+
+  .lock-icon {
+    pointer-events: none;
+  }
+
+  /* SIDE PANEL */
+  #side-panel {
+    width: 300px;
+    flex-shrink: 0;
+    background: var(--navy-light);
+    border-left: 2px solid var(--line-grey);
+    display: flex;
+    flex-direction: column;
+    overflow-y: auto;
+  }
+
+  #panel-lower {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-height: 0;
+  }
+
+  .panel-empty-state {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #7b84a0;
+    font-size: 13px;
+    text-align: center;
+    padding: 24px;
+  }
+
+  .panel-section {
+    padding: 16px;
+    border-bottom: 1px solid rgba(255,255,255,0.08);
+  }
+
+  .panel-section:last-child { border-bottom: none; }
+
+  .station-title {
+    font-size: 18px;
+    font-weight: 700;
+    color: var(--amber);
+    margin: 0 0 2px 0;
+  }
+
+  .station-meta {
+    font-size: 11px;
+    color: #9aa3bd;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin: 0 0 10px 0;
+  }
+
+  .station-desc {
+    font-size: 13px;
+    line-height: 1.5;
+    color: #d8d4c8;
+    margin: 0;
+  }
+
+  .section-heading {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: #9aa3bd;
+    margin: 0 0 10px 0;
+    font-weight: 700;
+  }
+
+  .placeholder-box {
+    border: 1px dashed var(--line-grey);
+    border-radius: 4px;
+    padding: 14px;
+    font-size: 12px;
+    color: #7b84a0;
+    text-align: center;
+  }
+
+  .lock-status {
+    display: inline-block;
+    font-size: 11px;
+    padding: 3px 8px;
+    border-radius: 3px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+
+  .lock-status.unlocked {
+    background: rgba(79,138,91,0.2);
+    color: var(--ok-green);
+  }
+
+  .lock-status.locked {
+    background: rgba(179,69,63,0.2);
+    color: #d9736c;
+  }
+
+  /* FOOTER */
+  footer {
+    display: flex;
+    background: var(--navy-light);
+    border-top: 2px solid var(--amber);
+    flex-shrink: 0;
+  }
+
+  footer button {
+    flex: 1;
+    min-height: 48px;
+    background: transparent;
+    border: none;
+    border-right: 1px solid rgba(255,255,255,0.08);
+    color: var(--off-white);
+    font-family: var(--font-ui);
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: 0.03em;
+    cursor: pointer;
+    text-transform: uppercase;
+  }
+
+  footer button:last-child { border-right: none; }
+
+  footer button:active {
+    background: rgba(232,163,61,0.15);
+  }
+
+  footer button.primary {
+    background: var(--amber-dim);
+    color: var(--navy);
+  }
+
+  footer button.primary:active {
+    background: var(--amber);
+  }
+
+  /* MODE BANNER */
+  #mode-banner {
+    position: absolute;
+    top: 10px;
+    left: 10px;
+    right: 10px;
+    background: var(--navy-light);
+    border: 1px solid var(--amber);
+    border-radius: 4px;
+    padding: 10px 12px;
+    display: none;
+    flex-direction: column;
+    gap: 8px;
+    font-size: 12px;
+    z-index: 5;
+    max-height: calc(100% - 20px);
+    overflow-y: auto;
+  }
+
+  #mode-banner.visible { display: flex; }
+
+  .mode-banner-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+
+  .mode-banner-row .banner-text { color: var(--off-white); }
+  .mode-banner-row .banner-text strong { color: var(--amber); }
+
+  .mode-banner-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    align-items: center;
+  }
+
+  .mode-banner-btns {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+  }
+
+  .mb-btn {
+    background: var(--amber-dim);
+    color: var(--navy);
+    border: none;
+    border-radius: 3px;
+    padding: 6px 10px;
+    font-weight: 700;
+    font-size: 11px;
+    text-transform: uppercase;
+    cursor: pointer;
+    min-height: 32px;
+    flex-shrink: 0;
+  }
+
+  .mb-btn.secondary {
+    background: var(--navy);
+    color: var(--off-white);
+    border: 1px solid var(--line-grey);
+  }
+
+  footer button.active {
+    background: var(--amber);
+    color: var(--navy);
+  }
+
+  /* MODAL OVERLAY (Fleet, Monthly Summary) */
+  .modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(10, 15, 28, 0.72);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    z-index: 20;
+    padding: 16px;
+  }
+
+  .modal-overlay.visible { display: flex; }
+
+  .modal-panel {
+    background: var(--navy-light);
+    border: 2px solid var(--amber);
+    border-radius: 6px;
+    width: 100%;
+    max-width: 420px;
+    max-height: 90vh;
+    overflow-y: auto;
+  }
+
+  .summary-row {
+    display: flex;
+    justify-content: space-between;
+    font-size: 13px;
+    padding: 6px 0;
+    border-bottom: 1px solid rgba(255,255,255,0.06);
+  }
+
+  .summary-row.summary-net {
+    font-weight: 700;
+    border-top: 1px solid rgba(255,255,255,0.15);
+    border-bottom: none;
+    margin-top: 4px;
+    padding-top: 10px;
+  }
+
+  .summary-row.summary-balance {
+    color: var(--off-white);
+    font-family: var(--font-mono);
+    font-size: 12px;
+    border-bottom: none;
+  }
+
+  .summary-pos { color: var(--ok-green); }
+  .summary-neg { color: #d9736c; }
+
+  /* QUEUE LIST */
+  .queue-sort-row {
+    display: flex;
+    gap: 6px;
+    margin-bottom: 10px;
+  }
+
+  .queue-sort-btn {
+    flex: 1;
+    background: var(--navy);
+    border: 1px solid var(--line-grey);
+    color: #9aa3bd;
+    border-radius: 3px;
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    padding: 6px 4px;
+    cursor: pointer;
+    min-height: 32px;
+  }
+
+  .queue-sort-btn.active {
+    border-color: var(--amber);
+    color: var(--amber);
+  }
+
+  .queue-list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .queue-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background: var(--navy);
+    border-radius: 4px;
+    padding: 8px 10px;
+    font-size: 12px;
+  }
+
+  .queue-item .queue-dest {
+    color: var(--off-white);
+    font-weight: 600;
+  }
+
+  .queue-item .queue-wait {
+    color: #9aa3bd;
+    font-size: 10px;
+    text-transform: uppercase;
+  }
+
+  .queue-item .queue-fare {
+    color: var(--ok-green);
+    font-family: var(--font-mono);
+    font-weight: 700;
+  }
+
+  .fleet-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 16px;
+    border-bottom: 1px solid rgba(255,255,255,0.1);
+  }
+
+  .fleet-header h2 {
+    margin: 0;
+    font-size: 15px;
+    color: var(--amber);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+
+  .train-card {
+    padding: 16px;
+  }
+
+  .train-name {
+    font-size: 16px;
+    font-weight: 700;
+    color: var(--off-white);
+    margin: 0 0 4px 0;
+  }
+
+  .train-specs {
+    display: flex;
+    gap: 14px;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: #9aa3bd;
+    margin-bottom: 14px;
+    flex-wrap: wrap;
+  }
+
+  .train-specs span strong { color: var(--off-white); }
+
+  .route-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-bottom: 12px;
+    min-height: 30px;
+    align-items: center;
+  }
+
+  .route-chip {
+    background: var(--navy);
+    border: 1px solid var(--amber-dim);
+    color: var(--off-white);
+    padding: 5px 10px;
+    border-radius: 12px;
+    font-size: 12px;
+  }
+
+  .route-chip.current {
+    border-color: var(--amber);
+    color: var(--amber);
+    font-weight: 700;
+  }
+
+  .route-arrow {
+    color: #7b84a0;
+    font-size: 12px;
+  }
+
+  .route-empty {
+    color: #7b84a0;
+    font-size: 12px;
+  }
+
+  .fleet-btn-row {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+
+  .fleet-btn {
+    flex: 1;
+    min-width: 100px;
+    min-height: 40px;
+    background: var(--navy);
+    border: 1px solid var(--line-grey);
+    color: var(--off-white);
+    border-radius: 4px;
+    font-size: 12px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    cursor: pointer;
+  }
+
+  .fleet-btn.primary {
+    background: var(--amber-dim);
+    color: var(--navy);
+    border-color: var(--amber-dim);
+  }
+
+  .fleet-btn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+
+  /* Mobile layout: stack panel below map */
+  @media (max-width: 720px) {
+    main {
+      flex-direction: column;
+    }
+    #map-container {
+      flex: 1 1 55%;
+      min-height: 0;
+    }
+    #side-panel {
+      width: 100%;
+      flex: 1 1 45%;
+      border-left: none;
+      border-top: 2px solid var(--line-grey);
+    }
+    header .stat-group {
+      gap: 10px;
+    }
+  }
+</style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <div class="title">Millhaven Transit Authority</div>
+    <div class="stat-group">
+      <div class="stat date">
+        <span class="label">Date</span>
+        <span class="value" id="stat-date">Jan 1900</span>
+      </div>
+      <div class="stat cash">
+        <span class="label">Cash</span>
+        <span class="value" id="stat-cash">$0</span>
+      </div>
+      <div class="stat rep">
+        <span class="label">Reputation</span>
+        <span class="value" id="stat-rep">0</span>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <div id="map-container">
+      <div id="mode-banner"></div>
+      <svg id="map-svg" viewBox="0 0 800 720" preserveAspectRatio="xMidYMid meet"></svg>
+    </div>
+    <div id="side-panel">
+      <div class="panel-section" id="panel-fleet-pinned"></div>
+      <div id="panel-lower">
+        <div id="panel-empty-msg" class="panel-empty-state">Select a station to view details.</div>
+        <div id="panel-content" style="display:none;"></div>
+      </div>
+    </div>
+  </main>
+
+  <footer>
+    <button id="btn-end-month">End Month</button>
+    <button id="btn-build">Build</button>
+  </footer>
+</div>
+
+<div id="summary-overlay" class="modal-overlay">
+  <div id="summary-panel" class="modal-panel">
+    <div class="fleet-header">
+      <h2>Monthly Summary</h2>
+    </div>
+    <div class="train-card" id="summary-body"></div>
+  </div>
+</div>
+
+<script>
+(function () {
+  'use strict';
+
+  var GRID_UNIT = 80;
+  var GRID_OFFSET_X = 80;
+  var GRID_OFFSET_Y = 80;
+
+  var STATIONS = [
+    { id: 'central',      num: '01', name: 'Central',          district: 'City Centre',        character: 'Main hub. Highest footfall. Connects to everything eventually.', col: 5, row: 4, startUnlocked: true },
+    { id: 'docks',        num: '02', name: 'Millhaven Docks',  district: 'Industrial',          character: 'Shift workers. Strong AM/PM peak. Low fares, high volume.', col: 3, row: 6, startUnlocked: true },
+    { id: 'foundry',      num: '03', name: 'Foundry Street',   district: 'Industrial',          character: 'Adjacent to Docks. Factory workers. Similar demand profile.', col: 2, row: 7, unlockCost: 1200, unlockRep: 30 },
+    { id: 'university',   num: '04', name: 'University',       district: 'University Quarter',  character: 'Students. High volume, lower fares. Quiet in summer.', col: 3, row: 2, unlockCost: 2000, unlockRep: 50 },
+    { id: 'collegiate',   num: '05', name: 'Collegiate Road',  district: 'University Quarter',  character: 'Postgrad housing and faculty. Steadier demand than University.', col: 2, row: 1, unlockCost: 2200, unlockRep: 55 },
+    { id: 'oldtown',      num: '06', name: 'Old Town',         district: 'Heritage/Tourism',    character: 'Tourists and leisure travellers. Weekend peaks.', col: 9, row: 6, unlockCost: 2400, unlockRep: 55 },
+    { id: 'marketsquare', num: '07', name: 'Market Square',    district: 'Commercial',          character: 'Shoppers and office workers. Midday busy.', col: 7, row: 4, unlockCost: 1800, unlockRep: 45 },
+    { id: 'thehill',      num: '08', name: 'The Hill',         district: 'Wealthy Residential', character: 'Low volume, premium fares. Prestige route.', col: 8, row: 2, unlockCost: 3500, unlockRep: 70 },
+    { id: 'ashford',      num: '09', name: 'Ashford',          district: 'Suburb North',        character: 'Commuters. Predictable morning/evening peaks.', col: 5, row: 2, unlockCost: 1800, unlockRep: 45 },
+    { id: 'greenway',     num: '10', name: 'Greenway',         district: 'Suburb East',         character: 'Long distance from centre — costly to serve, good fares.', col: 7, row: 0, unlockCost: 3200, unlockRep: 65 },
+    { id: 'riverside',    num: '11', name: 'Riverside',        district: 'Mixed Residential',   character: 'Steady mid-range demand. Good connector node.', col: 5, row: 6, unlockCost: 1600, unlockRep: 40 },
+    { id: 'newfield',     num: '12', name: 'Newfield',         district: 'Suburb South',        character: 'New development. Low demand early, grows over time.', col: 3, row: 8, unlockCost: 2000, unlockRep: 40 }
+  ];
+
+  var CONNECTIONS = [
+    ['central', 'docks'],
+    ['docks', 'foundry'],
+    ['central', 'marketsquare'],
+    ['marketsquare', 'oldtown'],
+    ['central', 'riverside'],
+    ['central', 'university'],
+    ['university', 'collegiate'],
+    ['central', 'ashford'],
+    ['ashford', 'greenway'],
+    ['ashford', 'thehill'],
+    ['riverside', 'newfield']
+  ];
+
+  var STATE_KEY = 'mta_save_v3';
+  var TRACK_COST = 750;
+  var QUEUE_MAX_PER_STATION = 6;
+  var SPAWN_MAX_PER_STATION = 2;
+  var BASE_FARE_PER_HOP = 8;
+  var HILL_FARE_MULTIPLIER = 2;
+  var MAINTENANCE_PER_TRAIN = 60;
+  var STAFF_BASE = 120;
+  var STAFF_PER_EXTRA_STATION = 15;
+
+  function defaultState() {
+    var unlocked = {};
+    var queues = {};
+    STATIONS.forEach(function (s) {
+      unlocked[s.id] = !!s.startUnlocked;
+      queues[s.id] = [];
+    });
+    return {
+      month: 1,
+      year: 1962,
+      cash: 5000,
+      reputation: 50,
+      unlocked: unlocked,
+      selected: null,
+      trackBuilt: {},
+      buildMode: false,
+      routeEditMode: false,
+      routeDraft: [],
+      queues: queues,
+      queueSort: 'wait',
+      nextGroupId: 1,
+      monthlyRevenue: 0,
+      seeded: false,
+      trains: [
+        { id: 'old-betsy', name: 'Old Betsy', capacity: 4, speedLabel: 'Slow', flavor: '1950s diesel — rattles, but it runs.', route: [], posIndex: 0, dir: 1, atStation: 'central', manifest: [] }
+      ]
+    };
+  }
+
+  function loadState() {
+    var raw = null;
+    try { raw = localStorage.getItem(STATE_KEY); } catch (e) {}
+    if (raw) {
+      try { return JSON.parse(raw); } catch (e) {}
+    }
+    return defaultState();
+  }
+
+  function saveState() {
+    try { localStorage.setItem(STATE_KEY, JSON.stringify(state)); } catch (e) {}
+  }
+
+  var state = loadState();
+
+  var MONTH_NAMES = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+
+  function gx(col) { return GRID_OFFSET_X + col * GRID_UNIT; }
+  function gy(row) { return GRID_OFFSET_Y + row * GRID_UNIT; }
+
+  function stationById(id) {
+    for (var i = 0; i < STATIONS.length; i++) {
+      if (STATIONS[i].id === id) return STATIONS[i];
+    }
+    return null;
+  }
+
+  var svgNS = 'http://www.w3.org/2000/svg';
+
+  function el(tag, attrs) {
+    var e = document.createElementNS(svgNS, tag);
+    for (var k in attrs) { e.setAttribute(k, attrs[k]); }
+    return e;
+  }
+
+  function connectionKey(a, b) {
+    return [a, b].sort().join('|');
+  }
+
+  function findConnection(a, b) {
+    for (var i = 0; i < CONNECTIONS.length; i++) {
+      var pair = CONNECTIONS[i];
+      if ((pair[0] === a && pair[1] === b) || (pair[0] === b && pair[1] === a)) return pair;
+    }
+    return null;
+  }
+
+  function isTrackBuilt(a, b) {
+    return !!state.trackBuilt[connectionKey(a, b)];
+  }
+
+  var adjacency = null;
+  function getAdjacency() {
+    if (adjacency) return adjacency;
+    adjacency = {};
+    STATIONS.forEach(function (s) { adjacency[s.id] = []; });
+    CONNECTIONS.forEach(function (pair) {
+      adjacency[pair[0]].push(pair[1]);
+      adjacency[pair[1]].push(pair[0]);
+    });
+    return adjacency;
+  }
+
+  function hopDistance(a, b) {
+    if (a === b) return 0;
+    var adj = getAdjacency();
+    var visited = { };
+    visited[a] = true;
+    var queue = [{ id: a, dist: 0 }];
+    while (queue.length) {
+      var cur = queue.shift();
+      var neighbors = adj[cur.id] || [];
+      for (var i = 0; i < neighbors.length; i++) {
+        var n = neighbors[i];
+        if (visited[n]) continue;
+        if (n === b) return cur.dist + 1;
+        visited[n] = true;
+        queue.push({ id: n, dist: cur.dist + 1 });
+      }
+    }
+    return null;
+  }
+
+  function computeFare(originId, destId) {
+    var hops = hopDistance(originId, destId);
+    if (hops === null || hops === 0) hops = 1;
+    var fare = hops * BASE_FARE_PER_HOP;
+    if (destId === 'thehill' || originId === 'thehill') fare *= HILL_FARE_MULTIPLIER;
+    return Math.round(fare);
+  }
+
+  function unlockedStationIds() {
+    return STATIONS.filter(function (s) { return !!state.unlocked[s.id]; }).map(function (s) { return s.id; });
+  }
+
+  function spawnPassengers() {
+    var ids = unlockedStationIds();
+    if (ids.length < 2) return;
+    ids.forEach(function (originId) {
+      var queue = state.queues[originId];
+      var spawnCount = Math.floor(Math.random() * (SPAWN_MAX_PER_STATION + 1));
+      for (var i = 0; i < spawnCount; i++) {
+        if (queue.length >= QUEUE_MAX_PER_STATION) break;
+        var others = ids.filter(function (id) { return id !== originId; });
+        var destId = others[Math.floor(Math.random() * others.length)];
+        queue.push({
+          id: state.nextGroupId++,
+          destination: destId,
+          fare: computeFare(originId, destId),
+          spawnMonth: state.year * 12 + state.month
+        });
+      }
+    });
+  }
+
+  function sortQueueEntries(entries) {
+    var sorted = entries.slice();
+    if (state.queueSort === 'fare') {
+      sorted.sort(function (a, b) { return b.fare - a.fare; });
+    } else if (state.queueSort === 'destination') {
+      sorted.sort(function (a, b) {
+        return stationById(a.destination).name.localeCompare(stationById(b.destination).name);
+      });
+    } else {
+      sorted.sort(function (a, b) { return a.spawnMonth - b.spawnMonth; });
+    }
+    return sorted;
+  }
+
+  function renderUnderlay(svg) {
+    var g = el('g', { 'class': 'underlay' });
+
+    var img = el('image', {
+      x: -16, y: -24, width: 1536, height: 864,
+      preserveAspectRatio: 'xMidYMid slice',
+      'class': 'underlay-image'
+    });
+    img.setAttributeNS('http://www.w3.org/1999/xlink', 'href', 'map_background.png');
+    img.setAttribute('href', 'map_background.png');
+    g.appendChild(img);
+
+    svg.appendChild(g);
+  }
+
+  function renderMap() {
+    var svg = document.getElementById('map-svg');
+    svg.innerHTML = '';
+    svg.classList.toggle('build-mode', !!state.buildMode);
+    svg.classList.toggle('route-edit-mode', !!state.routeEditMode);
+
+    renderUnderlay(svg);
+
+    // track/connection lines
+    CONNECTIONS.forEach(function (pair) {
+      var a = stationById(pair[0]);
+      var b = stationById(pair[1]);
+      var built = isTrackBuilt(a.id, b.id);
+      var bothUnlocked = !!state.unlocked[a.id] && !!state.unlocked[b.id];
+      var buildable = state.buildMode && bothUnlocked && !built;
+
+      var group = el('g', { 'class': 'track-group' + (buildable ? ' buildable' : '') });
+
+      var hit = el('line', {
+        x1: gx(a.col), y1: gy(a.row),
+        x2: gx(b.col), y2: gy(b.row),
+        'class': 'track-hit'
+      });
+      group.appendChild(hit);
+
+      var line = el('line', {
+        x1: gx(a.col), y1: gy(a.row),
+        x2: gx(b.col), y2: gy(b.row),
+        'class': 'track-line' + (built ? ' built' : '')
+      });
+      group.appendChild(line);
+
+      if (buildable) {
+        group.addEventListener('click', function () { buildTrack(a.id, b.id); });
+      }
+
+      svg.appendChild(group);
+    });
+
+    // stations
+    STATIONS.forEach(function (s) {
+      var unlocked = !!state.unlocked[s.id];
+      var isSelected = state.selected === s.id;
+      var g = el('g', {
+        'class': 'station-node ' + (unlocked ? 'unlocked' : 'locked') + (isSelected ? ' selected' : ''),
+        'data-id': s.id
+      });
+
+      var circle = el('circle', {
+        'class': 'base',
+        cx: gx(s.col), cy: gy(s.row), r: 16
+      });
+      g.appendChild(circle);
+
+      var numText = el('text', {
+        'class': 'number',
+        x: gx(s.col), y: gy(s.row)
+      });
+      numText.textContent = s.num;
+      g.appendChild(numText);
+
+      var labelX = gx(s.col);
+      var labelY = gy(s.row) - 24;
+      var anchor = 'middle';
+      var labelText = el('text', {
+        'class': 'label',
+        x: labelX, y: labelY,
+        'text-anchor': anchor
+      });
+      labelText.textContent = s.name;
+      g.appendChild(labelText);
+
+      g.addEventListener('click', function () { handleStationClick(s.id); });
+      svg.appendChild(g);
+    });
+
+    // trains
+    state.trains.forEach(function (train) {
+      var s = stationById(train.atStation);
+      if (!s) return;
+      var tg = el('g', { 'class': 'train-icon' });
+      var rect = el('rect', {
+        x: gx(s.col) - 22, y: gy(s.row) - 6,
+        width: 16, height: 12, rx: 3
+      });
+      tg.appendChild(rect);
+      svg.appendChild(tg);
+    });
+  }
+
+  function handleStationClick(id) {
+    if (state.routeEditMode) {
+      addRouteDraftStop(id);
+      return;
+    }
+    selectStation(id);
+  }
+
+  function selectStation(id) {
+    state.selected = id;
+    saveState();
+    renderMap();
+    renderPanel();
+  }
+
+  function hasUnlockedNeighbor(stationId) {
+    var adj = getAdjacency()[stationId] || [];
+    for (var i = 0; i < adj.length; i++) {
+      if (state.unlocked[adj[i]]) return true;
+    }
+    return false;
+  }
+
+  function checkUnlockRequirements(stationId) {
+    var s = stationById(stationId);
+    var reasons = [];
+    if (!hasUnlockedNeighbor(stationId)) reasons.push('Needs an unlocked neighboring station on the line.');
+    if (state.cash < s.unlockCost) reasons.push('Not enough cash ($' + s.unlockCost.toLocaleString('en-US') + ' required).');
+    if (state.reputation < s.unlockRep) reasons.push('Reputation too low (' + s.unlockRep + ' required).');
+    return { ok: reasons.length === 0, reasons: reasons };
+  }
+
+  function unlockStation(stationId) {
+    var s = stationById(stationId);
+    var check = checkUnlockRequirements(stationId);
+    if (!check.ok) {
+      alert('Cannot unlock ' + s.name + ' yet:\n' + check.reasons.join('\n'));
+      return;
+    }
+    state.cash -= s.unlockCost;
+    state.unlocked[stationId] = true;
+    if (!state.queues[stationId]) state.queues[stationId] = [];
+    saveState();
+    renderMap();
+    renderHeader();
+    renderPanel();
+  }
+
+  function buildTrack(a, b) {
+    if (isTrackBuilt(a, b)) return;
+    if (!findConnection(a, b)) return;
+    if (!state.unlocked[a] || !state.unlocked[b]) return;
+    if (state.cash < TRACK_COST) {
+      alert('Not enough cash to lay this track. Need $' + TRACK_COST.toLocaleString('en-US') + '.');
+      return;
+    }
+    state.cash -= TRACK_COST;
+    state.trackBuilt[connectionKey(a, b)] = true;
+    saveState();
+    renderMap();
+    renderHeader();
+    updateModeBanner();
+  }
+
+  function setBuildMode(on) {
+    state.buildMode = on;
+    if (on) state.routeEditMode = false;
+    saveState();
+    renderMap();
+    updateModeBanner();
+    document.getElementById('btn-build').classList.toggle('active', on);
+  }
+
+  function setRouteEditMode(on) {
+    state.routeEditMode = on;
+    if (on) {
+      state.buildMode = false;
+      state.routeDraft = state.trains[0].route.slice();
+    }
+    saveState();
+    renderMap();
+    updateModeBanner();
+    renderFleetPinned();
+  }
+
+  function addRouteDraftStop(id) {
+    if (!state.unlocked[id]) return;
+    var draft = state.routeDraft;
+    if (draft.length === 0) {
+      draft.push(id);
+    } else {
+      var last = draft[draft.length - 1];
+      if (last === id) return;
+      if (!isTrackBuilt(last, id)) {
+        alert('No track laid between those stations yet. Build track first.');
+        return;
+      }
+      draft.push(id);
+    }
+    saveState();
+    updateModeBanner();
+  }
+
+  function undoRouteDraftStop() {
+    state.routeDraft.pop();
+    saveState();
+    updateModeBanner();
+  }
+
+  function clearRouteDraft() {
+    state.routeDraft = [];
+    saveState();
+    updateModeBanner();
+  }
+
+  function cancelRouteEdit() {
+    state.routeDraft = state.trains[0].route.slice();
+    setRouteEditMode(false);
+  }
+
+  function saveRouteDraft() {
+    var train = state.trains[0];
+    if (state.routeDraft.length < 2) {
+      alert('A route needs at least two stops. Tap another connected station on the map to add one.');
+      return;
+    }
+    train.route = state.routeDraft.slice();
+    train.posIndex = 0;
+    train.dir = 1;
+    train.atStation = train.route[0];
+    setRouteEditMode(false);
+  }
+
+  function loadGroupsAtStation(train, stationId) {
+    var queue = state.queues[stationId];
+    if (!queue) return;
+    var capacityLeft = train.capacity - train.manifest.length;
+    if (capacityLeft <= 0) return;
+    var eligible = queue.filter(function (g) { return train.route.indexOf(g.destination) !== -1 && g.destination !== stationId; });
+    eligible = sortQueueEntries(eligible).slice(0, capacityLeft);
+    eligible.forEach(function (g) {
+      train.manifest.push(g);
+      var idx = queue.indexOf(g);
+      if (idx !== -1) queue.splice(idx, 1);
+    });
+  }
+
+  function unloadGroupsAtStation(train, stationId) {
+    var remaining = [];
+    var fareCollected = 0;
+    train.manifest.forEach(function (g) {
+      if (g.destination === stationId) fareCollected += g.fare;
+      else remaining.push(g);
+    });
+    train.manifest = remaining;
+    if (fareCollected > 0) {
+      state.cash += fareCollected;
+      state.monthlyRevenue += fareCollected;
+    }
+  }
+
+  function dispatchTrain(trainId) {
+    var train = null;
+    for (var i = 0; i < state.trains.length; i++) {
+      if (state.trains[i].id === trainId) train = state.trains[i];
+    }
+    if (!train || train.route.length < 2) return;
+
+    loadGroupsAtStation(train, train.atStation);
+
+    var nextIndex = train.posIndex + train.dir;
+    if (nextIndex < 0 || nextIndex >= train.route.length) {
+      train.dir *= -1;
+      nextIndex = train.posIndex + train.dir;
+    }
+    train.posIndex = nextIndex;
+    train.atStation = train.route[train.posIndex];
+
+    unloadGroupsAtStation(train, train.atStation);
+
+    saveState();
+    renderMap();
+    renderHeader();
+    renderFleetPinned();
+    if (state.selected) renderPanel();
+  }
+
+  function updateModeBanner() {
+    var banner = document.getElementById('mode-banner');
+
+    if (state.buildMode) {
+      banner.classList.add('visible');
+      banner.innerHTML =
+        '<div class="mode-banner-row">' +
+          '<span class="banner-text"><strong>Build mode:</strong> tap a dashed connection between two unlocked stations to lay track ($' + TRACK_COST.toLocaleString('en-US') + ').</span>' +
+          '<div class="mode-banner-btns"><button class="mb-btn" id="mb-done">Done</button></div>' +
+        '</div>';
+      document.getElementById('mb-done').addEventListener('click', function () { setBuildMode(false); });
+      return;
+    }
+
+    if (state.routeEditMode) {
+      var train = state.trains[0];
+      var draft = state.routeDraft;
+      var chipsHtml = draft.length === 0
+        ? '<span class="route-empty">Tap a station on the map to start the route.</span>'
+        : draft.map(function (id, idx) {
+            var chip = '<span class="route-chip">' + stationById(id).name + '</span>';
+            if (idx < draft.length - 1) chip += '<span class="route-arrow">&rarr;</span>';
+            return chip;
+          }).join('');
+
+      banner.classList.add('visible');
+      banner.innerHTML =
+        '<div class="mode-banner-row">' +
+          '<span class="banner-text"><strong>' + train.name + ' route:</strong> tap unlocked stations in order (must have built track between each pair).</span>' +
+        '</div>' +
+        '<div class="mode-banner-chips">' + chipsHtml + '</div>' +
+        '<div class="mode-banner-row">' +
+          '<div class="mode-banner-btns">' +
+            '<button class="mb-btn secondary" id="mb-undo">Undo Stop</button>' +
+            '<button class="mb-btn secondary" id="mb-clear">Clear</button>' +
+            '<button class="mb-btn secondary" id="mb-cancel">Cancel</button>' +
+            '<button class="mb-btn" id="mb-save">Save Route</button>' +
+          '</div>' +
+        '</div>';
+      document.getElementById('mb-undo').addEventListener('click', undoRouteDraftStop);
+      document.getElementById('mb-clear').addEventListener('click', clearRouteDraft);
+      document.getElementById('mb-cancel').addEventListener('click', cancelRouteEdit);
+      document.getElementById('mb-save').addEventListener('click', saveRouteDraft);
+      return;
+    }
+
+    banner.classList.remove('visible');
+    banner.innerHTML = '';
+  }
+
+  function renderPanel() {
+    var emptyMsg = document.getElementById('panel-empty-msg');
+    var content = document.getElementById('panel-content');
+
+    if (!state.selected) {
+      emptyMsg.style.display = 'flex';
+      content.style.display = 'none';
+      return;
+    }
+
+    var s = stationById(state.selected);
+    var unlocked = !!state.unlocked[s.id];
+
+    emptyMsg.style.display = 'none';
+    content.style.display = 'block';
+
+    content.innerHTML =
+      '<div class="panel-section">' +
+        '<p class="station-title">' + s.num + ' — ' + s.name + '</p>' +
+        '<p class="station-meta">' + s.district + '</p>' +
+        '<span class="lock-status ' + (unlocked ? 'unlocked' : 'locked') + '">' +
+          (unlocked ? 'Unlocked' : 'Locked') +
+        '</span>' +
+        '<p class="station-desc" style="margin-top:10px;">' + s.character + '</p>' +
+      '</div>' +
+      (unlocked ? '' : '<div class="panel-section"><div id="unlock-section"></div></div>') +
+      '<div class="panel-section">' +
+        '<p class="section-heading">Queue</p>' +
+        '<div id="queue-section"></div>' +
+      '</div>' +
+      '<div class="panel-section">' +
+        '<p class="section-heading">Train / Dispatch</p>' +
+        '<div id="train-section"></div>' +
+      '</div>';
+
+    if (!unlocked) renderUnlockSection(s.id);
+    renderQueueSection(s.id);
+    renderTrainSection(s.id);
+  }
+
+  function renderUnlockSection(stationId) {
+    var container = document.getElementById('unlock-section');
+    if (!container) return;
+    var s = stationById(stationId);
+    var check = checkUnlockRequirements(stationId);
+
+    var reqLines = [
+      '<div class="summary-row"><span>Unlock cost</span><span class="' + (state.cash >= s.unlockCost ? 'summary-pos' : 'summary-neg') + '">$' + s.unlockCost.toLocaleString('en-US') + '</span></div>',
+      '<div class="summary-row"><span>Reputation needed</span><span class="' + (state.reputation >= s.unlockRep ? 'summary-pos' : 'summary-neg') + '">' + s.unlockRep + '</span></div>',
+      '<div class="summary-row"><span>Line access</span><span class="' + (hasUnlockedNeighbor(stationId) ? 'summary-pos' : 'summary-neg') + '">' + (hasUnlockedNeighbor(stationId) ? 'OK' : 'No unlocked neighbor') + '</span></div>'
+    ].join('');
+
+    container.innerHTML =
+      '<p class="section-heading">Unlock This Station</p>' +
+      reqLines +
+      '<button class="fleet-btn primary" id="unlock-btn" style="width:100%;margin-top:10px;"' + (check.ok ? '' : ' disabled') + '>Unlock ' + s.name + '</button>';
+
+    var btn = document.getElementById('unlock-btn');
+    if (btn) btn.addEventListener('click', function () { unlockStation(stationId); });
+  }
+
+  function renderQueueSection(stationId) {
+    var container = document.getElementById('queue-section');
+    if (!container) return;
+    var unlocked = !!state.unlocked[stationId];
+    if (!unlocked) {
+      container.innerHTML = '<div class="placeholder-box">Station is locked — no passenger demand here yet.</div>';
+      return;
+    }
+
+    var queue = state.queues[stationId] || [];
+    var sortModes = [
+      { key: 'wait', label: 'Wait' },
+      { key: 'destination', label: 'Dest' },
+      { key: 'fare', label: 'Fare' }
+    ];
+    var sortRow = '<div class="queue-sort-row">' + sortModes.map(function (m) {
+      return '<button class="queue-sort-btn' + (state.queueSort === m.key ? ' active' : '') + '" data-sort="' + m.key + '">' + m.label + '</button>';
+    }).join('') + '</div>';
+
+    var listHtml;
+    if (queue.length === 0) {
+      listHtml = '<div class="placeholder-box">No passengers waiting.</div>';
+    } else {
+      var nowAbs = state.year * 12 + state.month;
+      var sorted = sortQueueEntries(queue);
+      listHtml = '<div class="queue-list">' + sorted.map(function (g) {
+        var dest = stationById(g.destination);
+        var wait = Math.max(0, nowAbs - g.spawnMonth);
+        return '<div class="queue-item">' +
+          '<span class="queue-dest">' + dest.name + '<br><span class="queue-wait">' + wait + ' mo wait</span></span>' +
+          '<span class="queue-fare">$' + g.fare + '</span>' +
+          '</div>';
+      }).join('') + '</div>';
+    }
+
+    container.innerHTML = sortRow + listHtml;
+    var btns = container.querySelectorAll('.queue-sort-btn');
+    for (var i = 0; i < btns.length; i++) {
+      btns[i].addEventListener('click', function () {
+        state.queueSort = this.getAttribute('data-sort');
+        saveState();
+        renderQueueSection(stationId);
+      });
+    }
+  }
+
+  function renderTrainSection(stationId) {
+    var container = document.getElementById('train-section');
+    if (!container) return;
+    var train = state.trains[0];
+    var hereNow = train.atStation === stationId;
+    var onRoute = train.route.indexOf(stationId) !== -1;
+    var hasRoute = train.route.length >= 2;
+
+    if (hereNow && hasRoute) {
+      container.innerHTML =
+        '<div class="placeholder-box" style="border-style:solid;color:var(--off-white);margin-bottom:8px;">' +
+          '<strong style="color:var(--amber);">' + train.name + '</strong> is here. Onboard ' + train.manifest.length + '/' + train.capacity + '.' +
+        '</div>' +
+        '<div class="fleet-btn-row">' +
+          '<button class="fleet-btn" id="panel-edit-route">Edit Route</button>' +
+          '<button class="fleet-btn primary" id="panel-dispatch">Dispatch</button>' +
+        '</div>';
+      document.getElementById('panel-edit-route').addEventListener('click', function () { setRouteEditMode(true); });
+      document.getElementById('panel-dispatch').addEventListener('click', function () { dispatchTrain(train.id); });
+      return;
+    }
+
+    if (hereNow) {
+      container.innerHTML =
+        '<div class="placeholder-box" style="margin-bottom:8px;">' + train.name + ' is stabled here. Give it a route to start running.</div>' +
+        '<div class="fleet-btn-row"><button class="fleet-btn primary" id="panel-edit-route">Set Route</button></div>';
+      document.getElementById('panel-edit-route').addEventListener('click', function () { setRouteEditMode(true); });
+      return;
+    }
+
+    if (onRoute) {
+      container.innerHTML = '<div class="placeholder-box">On ' + train.name + '\'s route. Currently at ' + stationById(train.atStation).name + '.</div>';
+      return;
+    }
+
+    container.innerHTML = '<div class="placeholder-box">No train assigned to this station. Manage routes from the <strong>Fleet</strong> panel above.</div>';
+  }
+
+  function renderHeader() {
+    document.getElementById('stat-date').textContent = MONTH_NAMES[state.month - 1] + ' ' + state.year;
+    document.getElementById('stat-cash').textContent = '$' + state.cash.toLocaleString('en-US');
+    document.getElementById('stat-rep').textContent = state.reputation;
+  }
+
+  function endMonth() {
+    var maintenance = state.trains.length * MAINTENANCE_PER_TRAIN;
+    var unlockedIds = unlockedStationIds();
+    var unlockedCount = unlockedIds.length;
+    var staff = STAFF_BASE + Math.max(0, unlockedCount - 2) * STAFF_PER_EXTRA_STATION;
+    var costs = maintenance + staff;
+    var revenue = state.monthlyRevenue;
+    var net = revenue - costs;
+
+    var overflowCount = unlockedIds.filter(function (id) {
+      return (state.queues[id] || []).length >= QUEUE_MAX_PER_STATION;
+    }).length;
+    var repDelta = (revenue > 0 ? 1 : 0) - overflowCount;
+    state.reputation = Math.max(0, Math.min(100, state.reputation + repDelta));
+
+    var summary = {
+      label: MONTH_NAMES[state.month - 1] + ' ' + state.year,
+      revenue: revenue,
+      maintenance: maintenance,
+      staff: staff,
+      costs: costs,
+      net: net,
+      repDelta: repDelta
+    };
+
+    state.cash += net;
+    state.month += 1;
+    if (state.month > 12) {
+      state.month = 1;
+      state.year += 1;
+    }
+    state.monthlyRevenue = 0;
+    spawnPassengers();
+    saveState();
+    renderHeader();
+    renderMap();
+    if (state.selected) renderPanel();
+    showMonthlySummary(summary);
+  }
+
+  function showMonthlySummary(summary) {
+    var body = document.getElementById('summary-body');
+    var sign = summary.net >= 0 ? '+' : '−';
+    body.innerHTML =
+      '<p class="train-name" style="margin-bottom:14px;">' + summary.label + '</p>' +
+      '<div class="summary-row"><span>Fares collected</span><span class="summary-pos">+$' + summary.revenue.toLocaleString('en-US') + '</span></div>' +
+      '<div class="summary-row"><span>Maintenance</span><span class="summary-neg">−$' + summary.maintenance.toLocaleString('en-US') + '</span></div>' +
+      '<div class="summary-row"><span>Staff overhead</span><span class="summary-neg">−$' + summary.staff.toLocaleString('en-US') + '</span></div>' +
+      '<div class="summary-row summary-net"><span>Net</span><span class="' + (summary.net >= 0 ? 'summary-pos' : 'summary-neg') + '">' + sign + '$' + Math.abs(summary.net).toLocaleString('en-US') + '</span></div>' +
+      '<div class="summary-row"><span>Reputation</span><span class="' + (summary.repDelta >= 0 ? 'summary-pos' : 'summary-neg') + '">' + (summary.repDelta >= 0 ? '+' : '') + summary.repDelta + '</span></div>' +
+      '<div class="summary-row summary-balance"><span>Cash balance</span><span>$' + state.cash.toLocaleString('en-US') + '</span></div>' +
+      '<button class="fleet-btn primary" id="summary-continue" style="width:100%;margin-top:14px;">Continue</button>';
+    document.getElementById('summary-continue').addEventListener('click', closeSummary);
+    document.getElementById('summary-overlay').classList.add('visible');
+  }
+
+  function closeSummary() {
+    document.getElementById('summary-overlay').classList.remove('visible');
+  }
+
+  function renderFleetPinned() {
+    var container = document.getElementById('panel-fleet-pinned');
+    if (!container) return;
+
+    if (state.routeEditMode) {
+      container.innerHTML = '<p class="section-heading">Fleet</p><div class="placeholder-box">Editing route on the map above.</div>';
+      return;
+    }
+
+    var train = state.trains[0];
+    var chipsHtml = '';
+    if (train.route.length === 0) {
+      chipsHtml = '<span class="route-empty">No stops yet.</span>';
+    } else {
+      chipsHtml = train.route.map(function (id, idx) {
+        var st = stationById(id);
+        var isCurrent = train.posIndex === idx;
+        var chip = '<span class="route-chip' + (isCurrent ? ' current' : '') + '">' + st.name + '</span>';
+        if (idx < train.route.length - 1) chip += '<span class="route-arrow">&rarr;</span>';
+        return chip;
+      }).join('');
+    }
+
+    var canDispatch = train.route.length >= 2;
+
+    container.innerHTML =
+      '<p class="section-heading">Fleet</p>' +
+      '<p class="train-name">' + train.name + '</p>' +
+      '<div class="train-specs">' +
+        '<span>Onboard <strong>' + train.manifest.length + '/' + train.capacity + ' groups</strong></span>' +
+        '<span>Speed <strong>' + train.speedLabel + '</strong></span>' +
+        '<span>At <strong>' + stationById(train.atStation).name + '</strong></span>' +
+      '</div>' +
+      '<p class="section-heading">Route</p>' +
+      '<div class="route-chips">' + chipsHtml + '</div>' +
+      '<div class="fleet-btn-row">' +
+        '<button class="fleet-btn" id="pinned-edit-route">Edit Route</button>' +
+        '<button class="fleet-btn primary" id="pinned-dispatch"' + (canDispatch ? '' : ' disabled') + '>Dispatch</button>' +
+      '</div>';
+
+    document.getElementById('pinned-edit-route').addEventListener('click', function () { setRouteEditMode(true); });
+    var dispatchBtn = document.getElementById('pinned-dispatch');
+    if (dispatchBtn) dispatchBtn.addEventListener('click', function () { dispatchTrain(train.id); });
+  }
+
+  document.getElementById('btn-end-month').addEventListener('click', endMonth);
+  document.getElementById('btn-build').addEventListener('click', function () {
+    setBuildMode(!state.buildMode);
+  });
+
+  if (!state.seeded) {
+    spawnPassengers();
+    state.seeded = true;
+    saveState();
+  }
+
+  renderHeader();
+  renderMap();
+  renderPanel();
+  renderFleetPinned();
+  updateModeBanner();
+})();
+</script>
+</body>
+</html>
