@@ -636,6 +636,76 @@
     cursor: not-allowed;
   }
 
+  /* FLEET TABS */
+  .fleet-tabs {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    margin-bottom: 12px;
+  }
+
+  .fleet-tab {
+    background: var(--navy);
+    border: 1px solid var(--line-grey);
+    color: #9aa3bd;
+    border-radius: 3px;
+    font-size: 11px;
+    font-weight: 600;
+    padding: 6px 10px;
+    cursor: pointer;
+    min-height: 32px;
+    letter-spacing: 0.02em;
+  }
+
+  .fleet-tab.active {
+    border-color: var(--amber);
+    color: var(--amber);
+    background: var(--navy-light);
+  }
+
+  /* BUY TRAIN PANEL */
+  .buy-panel {
+    margin-top: 12px;
+    border-top: 1px solid rgba(255,255,255,0.1);
+    padding-top: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .buy-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    background: var(--navy);
+    border-radius: 4px;
+    padding: 8px 10px;
+  }
+
+  .buy-info {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .buy-info strong {
+    color: var(--off-white);
+    font-size: 13px;
+  }
+
+  .buy-specs {
+    color: #9aa3bd;
+    font-family: var(--font-mono);
+    font-size: 10px;
+  }
+
+  .buy-btn {
+    flex: 0 0 auto;
+    min-width: 78px;
+    min-height: 34px;
+  }
+
   /* Mobile layout: stack panel below map */
   @media (max-width: 720px) {
     main {
@@ -743,15 +813,25 @@
     ['riverside', 'newfield']
   ];
 
-  var STATE_KEY = 'mta_save_v3';
+  var STATE_KEY = 'mta_save_v4';
   var TRACK_COST = 750;
   var QUEUE_MAX_PER_STATION = 6;
   var SPAWN_MAX_PER_STATION = 2;
   var BASE_FARE_PER_HOP = 8;
   var HILL_FARE_MULTIPLIER = 2;
-  var MAINTENANCE_PER_TRAIN = 60;
   var STAFF_BASE = 120;
   var STAFF_PER_EXTRA_STATION = 15;
+
+  // Train type catalog (GDD §6). Capacity in passenger groups; maintenance is
+  // a flat monthly cost; purchaseCost/scrapValue are one-time (scrap ~40% of
+  // purchase). unlockYear gates availability in the Buy Train list. The diesel
+  // is the free starter type (purchaseCost 0 → excluded from the buy list).
+  var TRAIN_TYPES = [
+    { id: 'diesel', name: 'Old diesel',             capacity: 4,  speedLabel: 'Slow',   maintenance: 60,  purchaseCost: 0,    scrapValue: 300,  unlockYear: 0,    flavor: '1950s diesel — rattles, but it runs.' },
+    { id: 'refurb', name: 'Refurbished diesel',     capacity: 6,  speedLabel: 'Medium', maintenance: 90,  purchaseCost: 2500, scrapValue: 1000, unlockYear: 1965, flavor: 'Reconditioned workhorse — a bit more room.' },
+    { id: 'emu',    name: 'Electric multiple unit', capacity: 8,  speedLabel: 'Fast',   maintenance: 130, purchaseCost: 4500, scrapValue: 1800, unlockYear: 1972, flavor: 'Quiet, quick and clean.' },
+    { id: 'metro',  name: 'Modern metro car',       capacity: 10, speedLabel: 'Fast',   maintenance: 170, purchaseCost: 7000, scrapValue: 2800, unlockYear: 1980, flavor: 'High capacity, modern comfort.' }
+  ];
 
   function defaultState() {
     var unlocked = {};
@@ -771,13 +851,17 @@
       buildMode: false,
       routeEditMode: false,
       routeDraft: [],
+      editingTrainId: null,
+      activeTrainId: 'old-betsy',
+      buyPanelOpen: false,
+      nextUnitNum: 2,
       queues: queues,
       queueSort: 'wait',
       nextGroupId: 1,
       monthlyRevenue: 0,
       seeded: false,
       trains: [
-        { id: 'old-betsy', name: 'Old Betsy', capacity: 4, speedLabel: 'Slow', flavor: '1950s diesel — rattles, but it runs.', route: [], posIndex: 0, dir: 1, atStation: 'central', manifest: [] }
+        { id: 'old-betsy', typeId: 'diesel', name: 'Old Betsy', route: [], posIndex: 0, dir: 1, atStation: 'central', manifest: [] }
       ]
     };
   }
@@ -807,6 +891,38 @@
       if (STATIONS[i].id === id) return STATIONS[i];
     }
     return null;
+  }
+
+  function typeById(id) {
+    for (var i = 0; i < TRAIN_TYPES.length; i++) {
+      if (TRAIN_TYPES[i].id === id) return TRAIN_TYPES[i];
+    }
+    return null;
+  }
+
+  function trainById(id) {
+    for (var i = 0; i < state.trains.length; i++) {
+      if (state.trains[i].id === id) return state.trains[i];
+    }
+    return null;
+  }
+
+  function trainCapacity(train) {
+    var t = typeById(train.typeId);
+    return t ? t.capacity : 0;
+  }
+
+  function activeTrain() {
+    var t = trainById(state.activeTrainId);
+    if (!t) {
+      t = state.trains[0];
+      state.activeTrainId = t.id;
+    }
+    return t;
+  }
+
+  function padUnit(num) {
+    return num < 10 ? '0' + num : '' + num;
   }
 
   var svgNS = 'http://www.w3.org/2000/svg';
@@ -1002,13 +1118,17 @@
       svg.appendChild(g);
     });
 
-    // trains
+    // trains — offset icons that share a station so they don't overlap
+    var stationTrainCount = {};
     state.trains.forEach(function (train) {
       var s = stationById(train.atStation);
       if (!s) return;
+      var n = stationTrainCount[train.atStation] || 0;
+      stationTrainCount[train.atStation] = n + 1;
+      var oy = n * 15;
       var tg = el('g', { 'class': 'train-icon' });
       var rect = el('rect', {
-        x: gx(s.col) - 22, y: gy(s.row) - 6,
+        x: gx(s.col) - 22, y: gy(s.row) - 6 + oy,
         width: 16, height: 12, rx: 3
       });
       tg.appendChild(rect);
@@ -1089,11 +1209,16 @@
     document.getElementById('btn-build').classList.toggle('active', on);
   }
 
-  function setRouteEditMode(on) {
+  function setRouteEditMode(on, trainId) {
     state.routeEditMode = on;
     if (on) {
       state.buildMode = false;
-      state.routeDraft = state.trains[0].route.slice();
+      var t = trainById(trainId) || trainById(state.activeTrainId) || state.trains[0];
+      state.editingTrainId = t.id;
+      state.activeTrainId = t.id;
+      state.routeDraft = t.route.slice();
+    } else {
+      state.editingTrainId = null;
     }
     saveState();
     renderMap();
@@ -1132,12 +1257,15 @@
   }
 
   function cancelRouteEdit() {
-    state.routeDraft = state.trains[0].route.slice();
     setRouteEditMode(false);
   }
 
   function saveRouteDraft() {
-    var train = state.trains[0];
+    var train = trainById(state.editingTrainId);
+    if (!train) {
+      setRouteEditMode(false);
+      return;
+    }
     if (state.routeDraft.length < 2) {
       alert('A route needs at least two stops. Tap another connected station on the map to add one.');
       return;
@@ -1152,7 +1280,7 @@
   function loadGroupsAtStation(train, stationId) {
     var queue = state.queues[stationId];
     if (!queue) return;
-    var capacityLeft = train.capacity - train.manifest.length;
+    var capacityLeft = trainCapacity(train) - train.manifest.length;
     if (capacityLeft <= 0) return;
     var eligible = queue.filter(function (g) { return train.route.indexOf(g.destination) !== -1 && g.destination !== stationId; });
     eligible = sortQueueEntries(eligible).slice(0, capacityLeft);
@@ -1218,7 +1346,7 @@
     }
 
     if (state.routeEditMode) {
-      var train = state.trains[0];
+      var train = trainById(state.editingTrainId) || state.trains[0];
       var draft = state.routeDraft;
       var chipsHtml = draft.length === 0
         ? '<span class="route-empty">Tap a station on the map to start the route.</span>'
@@ -1363,35 +1491,48 @@
   function renderTrainSection(stationId) {
     var container = document.getElementById('train-section');
     if (!container) return;
-    var train = state.trains[0];
-    var hereNow = train.atStation === stationId;
-    var onRoute = train.route.indexOf(stationId) !== -1;
-    var hasRoute = train.route.length >= 2;
 
-    if (hereNow && hasRoute) {
-      container.innerHTML =
-        '<div class="placeholder-box" style="border-style:solid;color:var(--off-white);margin-bottom:8px;">' +
-          '<strong style="color:var(--amber);">' + train.name + '</strong> is here. Onboard ' + train.manifest.length + '/' + train.capacity + '.' +
-        '</div>' +
-        '<div class="fleet-btn-row">' +
-          '<button class="fleet-btn" id="panel-edit-route">Edit Route</button>' +
-          '<button class="fleet-btn primary" id="panel-dispatch">Dispatch</button>' +
-        '</div>';
-      document.getElementById('panel-edit-route').addEventListener('click', function () { setRouteEditMode(true); });
-      document.getElementById('panel-dispatch').addEventListener('click', function () { dispatchTrain(train.id); });
+    var here = state.trains.filter(function (t) { return t.atStation === stationId; });
+    var passing = state.trains.filter(function (t) {
+      return t.atStation !== stationId && t.route.indexOf(stationId) !== -1;
+    });
+
+    if (here.length > 0) {
+      var html = here.map(function (train) {
+        var hasRoute = train.route.length >= 2;
+        if (hasRoute) {
+          return '<div class="placeholder-box" style="border-style:solid;color:var(--off-white);margin-bottom:8px;">' +
+              '<strong style="color:var(--amber);">' + train.name + '</strong> is here. Onboard ' + train.manifest.length + '/' + trainCapacity(train) + '.' +
+            '</div>' +
+            '<div class="fleet-btn-row" style="margin-bottom:12px;">' +
+              '<button class="fleet-btn" data-edit="' + train.id + '">Edit Route</button>' +
+              '<button class="fleet-btn primary" data-dispatch="' + train.id + '">Dispatch</button>' +
+            '</div>';
+        }
+        return '<div class="placeholder-box" style="margin-bottom:8px;">' + train.name + ' is stabled here. Give it a route to start running.</div>' +
+          '<div class="fleet-btn-row" style="margin-bottom:12px;"><button class="fleet-btn primary" data-edit="' + train.id + '">Set Route</button></div>';
+      }).join('');
+      container.innerHTML = html;
+
+      var editBtns = container.querySelectorAll('[data-edit]');
+      for (var i = 0; i < editBtns.length; i++) {
+        editBtns[i].addEventListener('click', function () {
+          setRouteEditMode(true, this.getAttribute('data-edit'));
+        });
+      }
+      var dispBtns = container.querySelectorAll('[data-dispatch]');
+      for (var k = 0; k < dispBtns.length; k++) {
+        dispBtns[k].addEventListener('click', function () {
+          dispatchTrain(this.getAttribute('data-dispatch'));
+        });
+      }
       return;
     }
 
-    if (hereNow) {
-      container.innerHTML =
-        '<div class="placeholder-box" style="margin-bottom:8px;">' + train.name + ' is stabled here. Give it a route to start running.</div>' +
-        '<div class="fleet-btn-row"><button class="fleet-btn primary" id="panel-edit-route">Set Route</button></div>';
-      document.getElementById('panel-edit-route').addEventListener('click', function () { setRouteEditMode(true); });
-      return;
-    }
-
-    if (onRoute) {
-      container.innerHTML = '<div class="placeholder-box">On ' + train.name + '\'s route. Currently at ' + stationById(train.atStation).name + '.</div>';
+    if (passing.length > 0) {
+      container.innerHTML = passing.map(function (train) {
+        return '<div class="placeholder-box">On ' + train.name + '\'s route. Currently at ' + stationById(train.atStation).name + '.</div>';
+      }).join('');
       return;
     }
 
@@ -1405,7 +1546,11 @@
   }
 
   function endMonth() {
-    var maintenance = state.trains.length * MAINTENANCE_PER_TRAIN;
+    var maintenance = 0;
+    state.trains.forEach(function (t) {
+      var ty = typeById(t.typeId);
+      if (ty) maintenance += ty.maintenance;
+    });
     var unlockedIds = unlockedStationIds();
     var unlockedCount = unlockedIds.length;
     var staff = STAFF_BASE + Math.max(0, unlockedCount - 2) * STAFF_PER_EXTRA_STATION;
@@ -1464,6 +1609,68 @@
     document.getElementById('summary-overlay').classList.remove('visible');
   }
 
+  function buyTrain(typeId) {
+    var type = typeById(typeId);
+    if (!type || type.purchaseCost <= 0) return;
+    if (type.unlockYear > state.year) return;
+    if (state.cash < type.purchaseCost) {
+      alert('Not enough cash to buy this train. Need $' + type.purchaseCost.toLocaleString('en-US') + '.');
+      return;
+    }
+    state.cash -= type.purchaseCost;
+    var num = state.nextUnitNum++;
+    var train = {
+      id: 'unit-' + num,
+      typeId: type.id,
+      name: 'Unit ' + padUnit(num),
+      route: [],
+      posIndex: 0,
+      dir: 1,
+      atStation: 'central',
+      manifest: []
+    };
+    state.trains.push(train);
+    state.activeTrainId = train.id;
+    state.buyPanelOpen = false;
+    saveState();
+    renderHeader();
+    renderMap();
+    renderFleetPinned();
+    if (state.selected) renderPanel();
+  }
+
+  function retireTrain(trainId) {
+    if (state.trains.length <= 1) {
+      alert('You cannot retire your last train.');
+      return;
+    }
+    var train = trainById(trainId);
+    if (!train) return;
+    var type = typeById(train.typeId);
+    var scrap = type ? type.scrapValue : 0;
+    if (!confirm('Retire ' + train.name + ' and sell it for $' + scrap.toLocaleString('en-US') + ' scrap value?')) return;
+
+    var idx = state.trains.indexOf(train);
+    if (idx !== -1) state.trains.splice(idx, 1);
+    state.cash += scrap;
+
+    // clear dangling references to the retired train
+    if (state.editingTrainId === trainId) {
+      state.routeEditMode = false;
+      state.editingTrainId = null;
+    }
+    if (state.activeTrainId === trainId) {
+      state.activeTrainId = state.trains[0].id;
+    }
+
+    saveState();
+    renderHeader();
+    renderMap();
+    updateModeBanner();
+    renderFleetPinned();
+    if (state.selected) renderPanel();
+  }
+
   function renderFleetPinned() {
     var container = document.getElementById('panel-fleet-pinned');
     if (!container) return;
@@ -1473,7 +1680,13 @@
       return;
     }
 
-    var train = state.trains[0];
+    var train = activeTrain();
+    var type = typeById(train.typeId);
+
+    var tabsHtml = '<div class="fleet-tabs">' + state.trains.map(function (t) {
+      return '<button class="fleet-tab' + (t.id === train.id ? ' active' : '') + '" data-train="' + t.id + '">' + t.name + '</button>';
+    }).join('') + '</div>';
+
     var chipsHtml = '';
     if (train.route.length === 0) {
       chipsHtml = '<span class="route-empty">No stops yet.</span>';
@@ -1488,13 +1701,37 @@
     }
 
     var canDispatch = train.route.length >= 2;
+    var canRetire = state.trains.length > 1;
+
+    var buyHtml = '';
+    if (state.buyPanelOpen) {
+      var avail = TRAIN_TYPES.filter(function (t) { return t.purchaseCost > 0 && t.unlockYear <= state.year; });
+      var rows;
+      if (avail.length === 0) {
+        rows = '<div class="placeholder-box">No new train types available yet. Newer stock unlocks in later years.</div>';
+      } else {
+        rows = avail.map(function (t) {
+          var afford = state.cash >= t.purchaseCost;
+          return '<div class="buy-row">' +
+              '<div class="buy-info">' +
+                '<strong>' + t.name + '</strong>' +
+                '<span class="buy-specs">Cap ' + t.capacity + ' · ' + t.speedLabel + ' · $' + t.maintenance + '/mo</span>' +
+              '</div>' +
+              '<button class="fleet-btn primary buy-btn" data-type="' + t.id + '"' + (afford ? '' : ' disabled') + '>$' + t.purchaseCost.toLocaleString('en-US') + '</button>' +
+            '</div>';
+        }).join('');
+      }
+      buyHtml = '<div class="buy-panel">' + rows + '</div>';
+    }
 
     container.innerHTML =
       '<p class="section-heading">Fleet</p>' +
+      tabsHtml +
       '<p class="train-name">' + train.name + '</p>' +
       '<div class="train-specs">' +
-        '<span>Onboard <strong>' + train.manifest.length + '/' + train.capacity + ' groups</strong></span>' +
-        '<span>Speed <strong>' + train.speedLabel + '</strong></span>' +
+        '<span>' + (type ? type.name : 'Unknown') + '</span>' +
+        '<span>Onboard <strong>' + train.manifest.length + '/' + (type ? type.capacity : 0) + ' groups</strong></span>' +
+        '<span>Speed <strong>' + (type ? type.speedLabel : '—') + '</strong></span>' +
         '<span>At <strong>' + stationById(train.atStation).name + '</strong></span>' +
       '</div>' +
       '<p class="section-heading">Route</p>' +
@@ -1502,11 +1739,41 @@
       '<div class="fleet-btn-row">' +
         '<button class="fleet-btn" id="pinned-edit-route">Edit Route</button>' +
         '<button class="fleet-btn primary" id="pinned-dispatch"' + (canDispatch ? '' : ' disabled') + '>Dispatch</button>' +
-      '</div>';
+      '</div>' +
+      '<div class="fleet-btn-row" style="margin-top:8px;">' +
+        '<button class="fleet-btn" id="pinned-buy">' + (state.buyPanelOpen ? 'Close' : 'Buy Train') + '</button>' +
+        '<button class="fleet-btn" id="pinned-retire"' + (canRetire ? '' : ' disabled') + '>Retire</button>' +
+      '</div>' +
+      buyHtml;
 
-    document.getElementById('pinned-edit-route').addEventListener('click', function () { setRouteEditMode(true); });
+    var tabBtns = container.querySelectorAll('.fleet-tab');
+    for (var i = 0; i < tabBtns.length; i++) {
+      tabBtns[i].addEventListener('click', function () {
+        state.activeTrainId = this.getAttribute('data-train');
+        saveState();
+        renderFleetPinned();
+      });
+    }
+
+    document.getElementById('pinned-edit-route').addEventListener('click', function () { setRouteEditMode(true, train.id); });
     var dispatchBtn = document.getElementById('pinned-dispatch');
     if (dispatchBtn) dispatchBtn.addEventListener('click', function () { dispatchTrain(train.id); });
+
+    document.getElementById('pinned-buy').addEventListener('click', function () {
+      state.buyPanelOpen = !state.buyPanelOpen;
+      saveState();
+      renderFleetPinned();
+    });
+
+    var retireBtn = document.getElementById('pinned-retire');
+    if (retireBtn && canRetire) {
+      retireBtn.addEventListener('click', function () { retireTrain(train.id); });
+    }
+
+    var buyBtns = container.querySelectorAll('.buy-btn');
+    for (var j = 0; j < buyBtns.length; j++) {
+      buyBtns[j].addEventListener('click', function () { buyTrain(this.getAttribute('data-type')); });
+    }
   }
 
   document.getElementById('btn-end-month').addEventListener('click', endMonth);
