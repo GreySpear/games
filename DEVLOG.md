@@ -13,9 +13,15 @@ Bottom tab bar: **Stations / Train / Build / End Month**.
 - **Build**: every connection as a list row — Built / Build $750 / locked-with-reason. No map interaction at all.
 
 ### Notes
-- Sim functions are copied verbatim from `index.html` (spawn, fares, dispatch, endMonth, unlock rules) — only the render layer differs. If sim logic changes, port it to both files (or extract a shared script — worth doing once a third surface appears).
 - Mobile UI state (active tab, route draft) lives in memory only and is never persisted, so it can't pollute the shared save. `buildMode`/`routeEditMode` from desktop saves are cleared on load.
 - Verified end-to-end headlessly (Playwright + system Chromium): fresh start, track build, route set, dispatch + fare collection, ping-pong, queue sort, end-month summary, and save round-trip desktop↔mobile.
+
+### Shared simulation core ([game.js](game.js)) — refactor
+Pulled all game data + rules out of both HTML files into `window.MTA` (loaded via `<script src="game.js">`). Both `index.html` and `mobile.html` are now **render-only**: they alias the shared helpers (`stationById`, `isTrackBuilt`, `sortQueueEntries`, …) so existing render code reads unchanged, and wrap the four mutating ops.
+- **UI-agnostic sim**: `game.js` has no DOM/alert/render. Mutating ops return results instead of rendering — `unlockStation`→`{ok,reasons}`, `buildTrack`→`{ok,reason}` (reason non-null only when worth an alert, e.g. short on cash), `dispatchTrain`→bool, `endMonth`→summary object. Each page's thin wrapper surfaces errors + re-renders in its own idiom.
+- **Shared state**: `MTA.state` is a single stable object reference (loaded once from `mta_save_v3`); sim ops mutate in place and never reassign it, so `var state = MTA.state` captured per-page stays valid. `MTA.init()` does the one-time passenger seed.
+- **Route-editing UIs stay per-page** — desktop edits on the map (banner + chips), mobile via candidate-chip list — since only the core rules are shared, not the interaction. Balance/rule changes now happen once in `game.js`.
+- Re-verified: 18 cross-file checks (mobile flow + desktop flow + round-trip) pass with no page errors.
 
 ## Session 1 — 2026-07-13
 
