@@ -2,6 +2,15 @@
 
 ## Session 2 — 2026-07-15
 
+### State at end of session
+Two ways to play, one game. `index.html` (desktop schematic map) and `mobile.html` (phone-first text UI) now sit on top of a shared, UI-agnostic simulation in `game.js`. Both load `game.js` via `<script src>` and read/write the **same save** (`mta_save_v3`), so a game started in one opens in the other in the same browser. No build step; open either HTML file directly. Branch: `claude/mobile-only-redesign-t8cgks`.
+
+Files: `game.js` (new, sim core) · `index.html` (now render-only) · `mobile.html` (new) · `map_background.png` (shared art) · `Claude.md` (GDD) · `DEVLOG.md`.
+
+Commits this session:
+- `27e67f4` Add mobile-only text-first UI (mobile.html)
+- `8a0f1a3` Extract shared simulation core into game.js
+
 ### Mobile-only text-first version ([mobile.html](mobile.html))
 A second UI over the same simulation, aimed at phones: less map, more text. Kept in the same repo (not a fork) so sim changes only need to be made once, and **it shares the same save** (`mta_save_v3`) — progress carries over between `index.html` and `mobile.html` in the same browser.
 
@@ -22,6 +31,14 @@ Pulled all game data + rules out of both HTML files into `window.MTA` (loaded vi
 - **Shared state**: `MTA.state` is a single stable object reference (loaded once from `mta_save_v3`); sim ops mutate in place and never reassign it, so `var state = MTA.state` captured per-page stays valid. `MTA.init()` does the one-time passenger seed.
 - **Route-editing UIs stay per-page** — desktop edits on the map (banner + chips), mobile via candidate-chip list — since only the core rules are shared, not the interaction. Balance/rule changes now happen once in `game.js`.
 - Re-verified: 18 cross-file checks (mobile flow + desktop flow + round-trip) pass with no page errors.
+
+### Next up (carried from Session 1 — now write once in `game.js`)
+1. **Fleet expansion** — buy a second train, train types/upgrades per GDD §6. The old "hardcoded to `state.trains[0]`" caveat still applies in the *render* layers (desktop pinned panel + route editing, mobile Train tab both assume one train); the sim ops (`dispatchTrain`, maintenance in `endMonth`) already loop over `state.trains`, so generalizing is mostly UI work now.
+2. **Seasonal demand curves** (GDD §8): summer quiets University stations, winter boosts suburbs — belongs in `spawnPassengers`.
+3. **Polish**: wait-time → happiness consequences beyond queue overflow; government subsidies for underserved districts (GDD §7); real-device pass on the mobile layout.
+
+### Verification harness (not committed)
+Headless checks live in the session scratchpad (`verify.js`, `verify2.js`) using `playwright-core` + system Chromium (`/opt/pw-browsers/chromium-1194/...`). They drive the real pages via `file://` and assert on `localStorage`. Note: cross-file save sharing only works within a single Playwright **context** (`browser.newContext()` once, then `context.newPage()`), since `file://` localStorage is per-context. Not part of the repo — reconstruct from the DEVLOG if needed.
 
 ## Session 1 — 2026-07-13
 
