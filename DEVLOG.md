@@ -1,5 +1,22 @@
 # Millhaven Transit Authority — Dev Log
 
+## Session 2 — 2026-07-15
+
+### Mobile-only text-first version ([mobile.html](mobile.html))
+A second UI over the same simulation, aimed at phones: less map, more text. Kept in the same repo (not a fork) so sim changes only need to be made once, and **it shares the same save** (`mta_save_v3`) — progress carries over between `index.html` and `mobile.html` in the same browser.
+
+### Structure
+Bottom tab bar: **Stations / Train / Build / End Month**.
+- **Stations**: small non-interactive-ish town mini-map (tap a node to open its station) above a station list — each row shows queue depth (`n/6 waiting`, red at overflow), a `TRAIN` badge when the train is there, or unlock cost/rep when locked.
+- **Station detail**: same info/unlock-checklist/queue-sort sections as desktop, plus Dispatch when the train is present.
+- **Train**: train card, **onboard manifest** (new — desktop doesn't show this), and a vertical route strip (line-diagram style) with the train's position and next direction. Route editing is fully text-based: candidate "next stop" chips are computed from built track out of the last draft stop, so invalid routes can't be entered.
+- **Build**: every connection as a list row — Built / Build $750 / locked-with-reason. No map interaction at all.
+
+### Notes
+- Sim functions are copied verbatim from `index.html` (spawn, fares, dispatch, endMonth, unlock rules) — only the render layer differs. If sim logic changes, port it to both files (or extract a shared script — worth doing once a third surface appears).
+- Mobile UI state (active tab, route draft) lives in memory only and is never persisted, so it can't pollute the shared save. `buildMode`/`routeEditMode` from desktop saves are cleared on load.
+- Verified end-to-end headlessly (Playwright + system Chromium): fresh start, track build, route set, dispatch + fare collection, ping-pong, queue sort, end-month summary, and save round-trip desktop↔mobile.
+
 ## Session 1 — 2026-07-13
 
 ### State at end of session

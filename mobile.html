@@ -1,0 +1,1694 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Millhaven Transit Authority — Mobile</title>
+<style>
+  :root {
+    --navy: #17223b;
+    --navy-light: #223258;
+    --amber: #e8a33d;
+    --amber-dim: #a97a2e;
+    --off-white: #f2ede3;
+    --line-grey: #4a5570;
+    --locked-grey: #5c6478;
+    --ok-green: #4f8a5b;
+    --warn-red: #b3453f;
+    --font-ui: 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
+    --font-mono: 'Consolas', 'SF Mono', Menlo, monospace;
+  }
+
+  * { box-sizing: border-box; }
+
+  html, body {
+    margin: 0;
+    padding: 0;
+    height: 100%;
+    background: var(--navy);
+    color: var(--off-white);
+    font-family: var(--font-ui);
+    overflow: hidden;
+  }
+
+  #app {
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    height: 100dvh;
+    max-width: 560px;
+    margin: 0 auto;
+  }
+
+  /* HEADER */
+  header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 14px;
+    background: var(--navy-light);
+    border-bottom: 2px solid var(--amber);
+    flex-shrink: 0;
+    gap: 8px;
+  }
+
+  header .title {
+    font-weight: 700;
+    letter-spacing: 0.03em;
+    font-size: 12px;
+    text-transform: uppercase;
+    color: var(--amber);
+    line-height: 1.3;
+  }
+
+  .stat-group {
+    display: flex;
+    gap: 12px;
+    font-family: var(--font-mono);
+  }
+
+  .stat {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    line-height: 1.2;
+  }
+
+  .stat .label {
+    font-size: 9px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: #9aa3bd;
+  }
+
+  .stat .value {
+    font-size: 14px;
+    font-weight: 700;
+  }
+
+  .stat.cash .value { color: var(--ok-green); }
+  .stat.rep .value { color: var(--amber); }
+
+  /* MAIN SCROLL AREA */
+  main {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .view { display: none; padding-bottom: 16px; }
+  .view.active { display: block; }
+
+  .section {
+    padding: 14px;
+    border-bottom: 1px solid rgba(255,255,255,0.08);
+  }
+
+  .section-heading {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: #9aa3bd;
+    margin: 0 0 10px 0;
+    font-weight: 700;
+  }
+
+  .placeholder-box {
+    border: 1px dashed var(--line-grey);
+    border-radius: 4px;
+    padding: 14px;
+    font-size: 12px;
+    color: #7b84a0;
+    text-align: center;
+  }
+
+  .notice-box {
+    border: 1px solid var(--line-grey);
+    border-radius: 4px;
+    padding: 12px;
+    font-size: 12px;
+    color: var(--off-white);
+    line-height: 1.5;
+  }
+
+  .notice-box strong { color: var(--amber); }
+
+  /* MINI MAP */
+  #mini-map-wrap {
+    background: var(--navy);
+    padding: 10px 14px 4px 14px;
+  }
+
+  #mini-map-box {
+    border: 1px solid var(--line-grey);
+    border-radius: 6px;
+    overflow: hidden;
+    background: var(--navy);
+  }
+
+  #mini-map-svg {
+    display: block;
+    width: 100%;
+    height: 190px;
+    touch-action: manipulation;
+  }
+
+  .mini-caption {
+    font-size: 10px;
+    color: #7b84a0;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    text-align: center;
+    margin: 6px 0 4px 0;
+  }
+
+  .mm-track {
+    stroke: var(--line-grey);
+    stroke-width: 6;
+    stroke-linecap: round;
+    stroke-dasharray: 2 12;
+    fill: none;
+  }
+
+  .mm-track.built {
+    stroke: var(--amber);
+    stroke-dasharray: none;
+  }
+
+  .mm-station { cursor: pointer; }
+
+  .mm-station circle.base { stroke-width: 5; }
+
+  .mm-station.unlocked circle.base {
+    fill: var(--navy);
+    stroke: var(--amber);
+  }
+
+  .mm-station.locked circle.base {
+    fill: var(--off-white);
+    stroke: var(--navy-light);
+    stroke-dasharray: 5 4;
+  }
+
+  .mm-station text.number {
+    fill: var(--amber);
+    font-family: var(--font-mono);
+    font-size: 17px;
+    font-weight: 700;
+    pointer-events: none;
+    text-anchor: middle;
+    dominant-baseline: middle;
+  }
+
+  .mm-station.locked text.number { fill: var(--navy-light); }
+
+  .mm-train rect {
+    fill: var(--amber);
+    stroke: var(--navy);
+    stroke-width: 2;
+  }
+
+  /* STATION LIST */
+  .station-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    width: 100%;
+    text-align: left;
+    background: transparent;
+    border: none;
+    border-bottom: 1px solid rgba(255,255,255,0.08);
+    color: var(--off-white);
+    font-family: var(--font-ui);
+    padding: 12px 14px;
+    min-height: 60px;
+    cursor: pointer;
+  }
+
+  .station-row:active { background: rgba(232,163,61,0.1); }
+
+  .station-row .row-num {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--amber);
+    background: var(--navy-light);
+    border: 1px solid var(--amber-dim);
+    border-radius: 50%;
+    width: 32px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+
+  .station-row.locked .row-num {
+    color: var(--locked-grey);
+    border-color: var(--line-grey);
+    border-style: dashed;
+  }
+
+  .station-row .row-main { flex: 1; min-width: 0; }
+
+  .station-row .row-name {
+    font-size: 14px;
+    font-weight: 700;
+    margin: 0;
+  }
+
+  .station-row.locked .row-name { color: #9aa3bd; }
+
+  .station-row .row-sub {
+    font-size: 11px;
+    color: #7b84a0;
+    margin: 2px 0 0 0;
+  }
+
+  .station-row .row-right {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 3px;
+    flex-shrink: 0;
+  }
+
+  .badge {
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    padding: 2px 7px;
+    border-radius: 3px;
+    font-family: var(--font-mono);
+  }
+
+  .badge.queue { background: rgba(255,255,255,0.08); color: #c9cfdf; }
+  .badge.queue.full { background: rgba(179,69,63,0.25); color: #d9736c; }
+  .badge.train { background: var(--amber); color: var(--navy); }
+  .badge.locked-cost { background: transparent; color: var(--locked-grey); border: 1px dashed var(--line-grey); }
+  .badge.chevron { color: #7b84a0; background: transparent; font-size: 12px; }
+
+  /* STATION DETAIL */
+  .back-btn {
+    display: block;
+    width: 100%;
+    text-align: left;
+    background: var(--navy-light);
+    border: none;
+    border-bottom: 1px solid rgba(255,255,255,0.08);
+    color: var(--amber);
+    font-family: var(--font-ui);
+    font-size: 12px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    padding: 12px 14px;
+    min-height: 44px;
+    cursor: pointer;
+  }
+
+  .station-title {
+    font-size: 18px;
+    font-weight: 700;
+    color: var(--amber);
+    margin: 0 0 2px 0;
+  }
+
+  .station-meta {
+    font-size: 11px;
+    color: #9aa3bd;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin: 0 0 10px 0;
+  }
+
+  .station-desc {
+    font-size: 13px;
+    line-height: 1.5;
+    color: #d8d4c8;
+    margin: 10px 0 0 0;
+  }
+
+  .lock-status {
+    display: inline-block;
+    font-size: 11px;
+    padding: 3px 8px;
+    border-radius: 3px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+
+  .lock-status.unlocked { background: rgba(79,138,91,0.2); color: var(--ok-green); }
+  .lock-status.locked { background: rgba(179,69,63,0.2); color: #d9736c; }
+
+  .summary-row {
+    display: flex;
+    justify-content: space-between;
+    font-size: 13px;
+    padding: 6px 0;
+    border-bottom: 1px solid rgba(255,255,255,0.06);
+  }
+
+  .summary-row.summary-net {
+    font-weight: 700;
+    border-top: 1px solid rgba(255,255,255,0.15);
+    border-bottom: none;
+    margin-top: 4px;
+    padding-top: 10px;
+  }
+
+  .summary-row.summary-balance {
+    color: var(--off-white);
+    font-family: var(--font-mono);
+    font-size: 12px;
+    border-bottom: none;
+  }
+
+  .summary-pos { color: var(--ok-green); }
+  .summary-neg { color: #d9736c; }
+
+  /* QUEUE */
+  .queue-sort-row {
+    display: flex;
+    gap: 6px;
+    margin-bottom: 10px;
+  }
+
+  .queue-sort-btn {
+    flex: 1;
+    background: var(--navy);
+    border: 1px solid var(--line-grey);
+    color: #9aa3bd;
+    border-radius: 3px;
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    padding: 6px 4px;
+    cursor: pointer;
+    min-height: 36px;
+  }
+
+  .queue-sort-btn.active {
+    border-color: var(--amber);
+    color: var(--amber);
+  }
+
+  .queue-list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .queue-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.07);
+    border-radius: 4px;
+    padding: 9px 10px;
+    font-size: 12px;
+  }
+
+  .queue-item .queue-dest { color: var(--off-white); font-weight: 600; }
+  .queue-item .queue-wait { color: #9aa3bd; font-size: 10px; text-transform: uppercase; }
+  .queue-item .queue-fare { color: var(--ok-green); font-family: var(--font-mono); font-weight: 700; }
+
+  /* TRAIN VIEW */
+  .train-name {
+    font-size: 17px;
+    font-weight: 700;
+    color: var(--off-white);
+    margin: 0 0 4px 0;
+  }
+
+  .train-flavor {
+    font-size: 12px;
+    color: #9aa3bd;
+    font-style: italic;
+    margin: 0 0 10px 0;
+  }
+
+  .train-specs {
+    display: flex;
+    gap: 14px;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: #9aa3bd;
+    flex-wrap: wrap;
+  }
+
+  .train-specs span strong { color: var(--off-white); }
+
+  /* ROUTE STRIP (vertical line diagram) */
+  .route-strip { padding: 4px 0; }
+
+  .rs-row {
+    display: flex;
+    align-items: stretch;
+    min-height: 44px;
+  }
+
+  .rs-marker {
+    width: 34px;
+    flex-shrink: 0;
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .rs-marker::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 50%;
+    width: 4px;
+    margin-left: -2px;
+    background: var(--amber-dim);
+  }
+
+  .rs-row:first-child .rs-marker::before { top: 50%; }
+  .rs-row:last-child .rs-marker::before { bottom: 50%; }
+  .rs-row.rs-single .rs-marker::before { display: none; }
+
+  .rs-dot {
+    position: relative;
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: var(--navy);
+    border: 3px solid var(--amber);
+    z-index: 1;
+  }
+
+  .rs-row.current .rs-dot {
+    background: var(--amber);
+    width: 18px;
+    height: 18px;
+  }
+
+  .rs-body {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 6px 0;
+    border-bottom: 1px solid rgba(255,255,255,0.05);
+  }
+
+  .rs-row:last-child .rs-body { border-bottom: none; }
+
+  .rs-name { font-size: 14px; font-weight: 600; }
+  .rs-row.current .rs-name { color: var(--amber); font-weight: 700; }
+
+  .rs-note {
+    font-size: 10px;
+    color: #7b84a0;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    font-family: var(--font-mono);
+    text-align: right;
+  }
+
+  /* BUTTONS */
+  .btn-row {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+
+  .btn {
+    flex: 1;
+    min-width: 100px;
+    min-height: 46px;
+    background: var(--navy);
+    border: 1px solid var(--line-grey);
+    color: var(--off-white);
+    border-radius: 4px;
+    font-family: var(--font-ui);
+    font-size: 13px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    cursor: pointer;
+  }
+
+  .btn:active { background: rgba(232,163,61,0.15); }
+
+  .btn.primary {
+    background: var(--amber-dim);
+    color: var(--navy);
+    border-color: var(--amber-dim);
+  }
+
+  .btn.primary:active { background: var(--amber); }
+
+  .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  .btn.small {
+    min-height: 40px;
+    font-size: 11px;
+    min-width: 70px;
+    flex: 0 1 auto;
+    padding: 0 12px;
+  }
+
+  /* ROUTE EDITOR: candidate stops */
+  .candidate-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .candidate-btn {
+    background: var(--navy);
+    border: 1px solid var(--amber-dim);
+    color: var(--off-white);
+    border-radius: 16px;
+    font-family: var(--font-ui);
+    font-size: 13px;
+    font-weight: 600;
+    padding: 10px 16px;
+    min-height: 44px;
+    cursor: pointer;
+  }
+
+  .candidate-btn:active { background: rgba(232,163,61,0.2); }
+
+  /* BUILD VIEW */
+  .segment-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 12px 14px;
+    border-bottom: 1px solid rgba(255,255,255,0.08);
+    min-height: 62px;
+  }
+
+  .segment-row .seg-main { flex: 1; min-width: 0; }
+
+  .segment-row .seg-names {
+    font-size: 13px;
+    font-weight: 600;
+    margin: 0;
+  }
+
+  .segment-row.unavailable .seg-names { color: #9aa3bd; }
+
+  .segment-row .seg-sub {
+    font-size: 11px;
+    color: #7b84a0;
+    margin: 3px 0 0 0;
+  }
+
+  .seg-status {
+    flex-shrink: 0;
+  }
+
+  .seg-status .badge.built { background: rgba(79,138,91,0.2); color: var(--ok-green); }
+
+  .seg-link {
+    color: #7b84a0;
+    font-family: var(--font-mono);
+    font-size: 11px;
+  }
+
+  /* BOTTOM NAV */
+  nav {
+    display: flex;
+    background: var(--navy-light);
+    border-top: 2px solid var(--amber);
+    flex-shrink: 0;
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+
+  nav button {
+    flex: 1;
+    min-height: 54px;
+    background: transparent;
+    border: none;
+    border-right: 1px solid rgba(255,255,255,0.08);
+    color: var(--off-white);
+    font-family: var(--font-ui);
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.03em;
+    cursor: pointer;
+    text-transform: uppercase;
+  }
+
+  nav button:last-child { border-right: none; }
+  nav button:active { background: rgba(232,163,61,0.15); }
+  nav button.active { color: var(--amber); box-shadow: inset 0 3px 0 var(--amber); }
+
+  nav button.primary {
+    background: var(--amber-dim);
+    color: var(--navy);
+  }
+
+  nav button.primary:active { background: var(--amber); }
+
+  nav button .nav-note {
+    display: block;
+    font-size: 9px;
+    font-weight: 400;
+    color: inherit;
+    opacity: 0.7;
+    font-family: var(--font-mono);
+    margin-top: 1px;
+  }
+
+  /* MODAL */
+  .modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(10, 15, 28, 0.72);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    z-index: 20;
+    padding: 16px;
+  }
+
+  .modal-overlay.visible { display: flex; }
+
+  .modal-panel {
+    background: var(--navy-light);
+    border: 2px solid var(--amber);
+    border-radius: 6px;
+    width: 100%;
+    max-width: 420px;
+    max-height: 90vh;
+    overflow-y: auto;
+  }
+
+  .modal-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 16px;
+    border-bottom: 1px solid rgba(255,255,255,0.1);
+  }
+
+  .modal-header h2 {
+    margin: 0;
+    font-size: 15px;
+    color: var(--amber);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+
+  .modal-body { padding: 16px; }
+</style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <div class="title">Millhaven<br>Transit Authority</div>
+    <div class="stat-group">
+      <div class="stat date">
+        <span class="label">Date</span>
+        <span class="value" id="stat-date">Jan 1900</span>
+      </div>
+      <div class="stat cash">
+        <span class="label">Cash</span>
+        <span class="value" id="stat-cash">$0</span>
+      </div>
+      <div class="stat rep">
+        <span class="label">Rep</span>
+        <span class="value" id="stat-rep">0</span>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <div class="view" id="view-stations"></div>
+    <div class="view" id="view-detail"></div>
+    <div class="view" id="view-train"></div>
+    <div class="view" id="view-build"></div>
+  </main>
+
+  <nav>
+    <button id="nav-stations">Stations</button>
+    <button id="nav-train">Train</button>
+    <button id="nav-build">Build</button>
+    <button id="nav-end-month" class="primary">End<br>Month</button>
+  </nav>
+</div>
+
+<div id="summary-overlay" class="modal-overlay">
+  <div class="modal-panel">
+    <div class="modal-header">
+      <h2>Monthly Summary</h2>
+    </div>
+    <div class="modal-body" id="summary-body"></div>
+  </div>
+</div>
+
+<script>
+(function () {
+  'use strict';
+
+  var GRID_UNIT = 80;
+  var GRID_OFFSET_X = 80;
+  var GRID_OFFSET_Y = 80;
+
+  var STATIONS = [
+    { id: 'central',      num: '01', name: 'Central',          district: 'City Centre',        character: 'Main hub. Highest footfall. Connects to everything eventually.', col: 5, row: 4, startUnlocked: true },
+    { id: 'docks',        num: '02', name: 'Millhaven Docks',  district: 'Industrial',          character: 'Shift workers. Strong AM/PM peak. Low fares, high volume.', col: 3, row: 6, startUnlocked: true },
+    { id: 'foundry',      num: '03', name: 'Foundry Street',   district: 'Industrial',          character: 'Adjacent to Docks. Factory workers. Similar demand profile.', col: 2, row: 7, unlockCost: 1200, unlockRep: 30 },
+    { id: 'university',   num: '04', name: 'University',       district: 'University Quarter',  character: 'Students. High volume, lower fares. Quiet in summer.', col: 3, row: 2, unlockCost: 2000, unlockRep: 50 },
+    { id: 'collegiate',   num: '05', name: 'Collegiate Road',  district: 'University Quarter',  character: 'Postgrad housing and faculty. Steadier demand than University.', col: 2, row: 1, unlockCost: 2200, unlockRep: 55 },
+    { id: 'oldtown',      num: '06', name: 'Old Town',         district: 'Heritage/Tourism',    character: 'Tourists and leisure travellers. Weekend peaks.', col: 9, row: 6, unlockCost: 2400, unlockRep: 55 },
+    { id: 'marketsquare', num: '07', name: 'Market Square',    district: 'Commercial',          character: 'Shoppers and office workers. Midday busy.', col: 7, row: 4, unlockCost: 1800, unlockRep: 45 },
+    { id: 'thehill',      num: '08', name: 'The Hill',         district: 'Wealthy Residential', character: 'Low volume, premium fares. Prestige route.', col: 8, row: 2, unlockCost: 3500, unlockRep: 70 },
+    { id: 'ashford',      num: '09', name: 'Ashford',          district: 'Suburb North',        character: 'Commuters. Predictable morning/evening peaks.', col: 5, row: 2, unlockCost: 1800, unlockRep: 45 },
+    { id: 'greenway',     num: '10', name: 'Greenway',         district: 'Suburb East',         character: 'Long distance from centre — costly to serve, good fares.', col: 7, row: 0, unlockCost: 3200, unlockRep: 65 },
+    { id: 'riverside',    num: '11', name: 'Riverside',        district: 'Mixed Residential',   character: 'Steady mid-range demand. Good connector node.', col: 5, row: 6, unlockCost: 1600, unlockRep: 40 },
+    { id: 'newfield',     num: '12', name: 'Newfield',         district: 'Suburb South',        character: 'New development. Low demand early, grows over time.', col: 3, row: 8, unlockCost: 2000, unlockRep: 40 }
+  ];
+
+  var CONNECTIONS = [
+    ['central', 'docks'],
+    ['docks', 'foundry'],
+    ['central', 'marketsquare'],
+    ['marketsquare', 'oldtown'],
+    ['central', 'riverside'],
+    ['central', 'university'],
+    ['university', 'collegiate'],
+    ['central', 'ashford'],
+    ['ashford', 'greenway'],
+    ['ashford', 'thehill'],
+    ['riverside', 'newfield']
+  ];
+
+  var STATE_KEY = 'mta_save_v3';
+  var TRACK_COST = 750;
+  var QUEUE_MAX_PER_STATION = 6;
+  var SPAWN_MAX_PER_STATION = 2;
+  var BASE_FARE_PER_HOP = 8;
+  var HILL_FARE_MULTIPLIER = 2;
+  var MAINTENANCE_PER_TRAIN = 60;
+  var STAFF_BASE = 120;
+  var STAFF_PER_EXTRA_STATION = 15;
+
+  function defaultState() {
+    var unlocked = {};
+    var queues = {};
+    STATIONS.forEach(function (s) {
+      unlocked[s.id] = !!s.startUnlocked;
+      queues[s.id] = [];
+    });
+    return {
+      month: 1,
+      year: 1962,
+      cash: 5000,
+      reputation: 50,
+      unlocked: unlocked,
+      selected: null,
+      trackBuilt: {},
+      buildMode: false,
+      routeEditMode: false,
+      routeDraft: [],
+      queues: queues,
+      queueSort: 'wait',
+      nextGroupId: 1,
+      monthlyRevenue: 0,
+      seeded: false,
+      trains: [
+        { id: 'old-betsy', name: 'Old Betsy', capacity: 4, speedLabel: 'Slow', flavor: '1950s diesel — rattles, but it runs.', route: [], posIndex: 0, dir: 1, atStation: 'central', manifest: [] }
+      ]
+    };
+  }
+
+  function loadState() {
+    var raw = null;
+    try { raw = localStorage.getItem(STATE_KEY); } catch (e) {}
+    if (raw) {
+      try { return JSON.parse(raw); } catch (e) {}
+    }
+    return defaultState();
+  }
+
+  function saveState() {
+    try { localStorage.setItem(STATE_KEY, JSON.stringify(state)); } catch (e) {}
+  }
+
+  var state = loadState();
+  // Desktop map modes have no meaning here; clear them so a shared save
+  // doesn't come up stuck in build/route-edit mode.
+  state.buildMode = false;
+  state.routeEditMode = false;
+
+  // Mobile UI state — never persisted, so it can't pollute the shared save.
+  var ui = {
+    view: 'stations',       // stations | detail | train | build
+    detailStation: null,
+    editingRoute: false,
+    routeDraft: []
+  };
+
+  var MONTH_NAMES = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+
+  function gx(col) { return GRID_OFFSET_X + col * GRID_UNIT; }
+  function gy(row) { return GRID_OFFSET_Y + row * GRID_UNIT; }
+
+  function stationById(id) {
+    for (var i = 0; i < STATIONS.length; i++) {
+      if (STATIONS[i].id === id) return STATIONS[i];
+    }
+    return null;
+  }
+
+  var svgNS = 'http://www.w3.org/2000/svg';
+
+  function svgEl(tag, attrs) {
+    var e = document.createElementNS(svgNS, tag);
+    for (var k in attrs) { e.setAttribute(k, attrs[k]); }
+    return e;
+  }
+
+  function connectionKey(a, b) {
+    return [a, b].sort().join('|');
+  }
+
+  function findConnection(a, b) {
+    for (var i = 0; i < CONNECTIONS.length; i++) {
+      var pair = CONNECTIONS[i];
+      if ((pair[0] === a && pair[1] === b) || (pair[0] === b && pair[1] === a)) return pair;
+    }
+    return null;
+  }
+
+  function isTrackBuilt(a, b) {
+    return !!state.trackBuilt[connectionKey(a, b)];
+  }
+
+  var adjacency = null;
+  function getAdjacency() {
+    if (adjacency) return adjacency;
+    adjacency = {};
+    STATIONS.forEach(function (s) { adjacency[s.id] = []; });
+    CONNECTIONS.forEach(function (pair) {
+      adjacency[pair[0]].push(pair[1]);
+      adjacency[pair[1]].push(pair[0]);
+    });
+    return adjacency;
+  }
+
+  function hopDistance(a, b) {
+    if (a === b) return 0;
+    var adj = getAdjacency();
+    var visited = {};
+    visited[a] = true;
+    var queue = [{ id: a, dist: 0 }];
+    while (queue.length) {
+      var cur = queue.shift();
+      var neighbors = adj[cur.id] || [];
+      for (var i = 0; i < neighbors.length; i++) {
+        var n = neighbors[i];
+        if (visited[n]) continue;
+        if (n === b) return cur.dist + 1;
+        visited[n] = true;
+        queue.push({ id: n, dist: cur.dist + 1 });
+      }
+    }
+    return null;
+  }
+
+  function computeFare(originId, destId) {
+    var hops = hopDistance(originId, destId);
+    if (hops === null || hops === 0) hops = 1;
+    var fare = hops * BASE_FARE_PER_HOP;
+    if (destId === 'thehill' || originId === 'thehill') fare *= HILL_FARE_MULTIPLIER;
+    return Math.round(fare);
+  }
+
+  function unlockedStationIds() {
+    return STATIONS.filter(function (s) { return !!state.unlocked[s.id]; }).map(function (s) { return s.id; });
+  }
+
+  function spawnPassengers() {
+    var ids = unlockedStationIds();
+    if (ids.length < 2) return;
+    ids.forEach(function (originId) {
+      var queue = state.queues[originId];
+      var spawnCount = Math.floor(Math.random() * (SPAWN_MAX_PER_STATION + 1));
+      for (var i = 0; i < spawnCount; i++) {
+        if (queue.length >= QUEUE_MAX_PER_STATION) break;
+        var others = ids.filter(function (id) { return id !== originId; });
+        var destId = others[Math.floor(Math.random() * others.length)];
+        queue.push({
+          id: state.nextGroupId++,
+          destination: destId,
+          fare: computeFare(originId, destId),
+          spawnMonth: state.year * 12 + state.month
+        });
+      }
+    });
+  }
+
+  function sortQueueEntries(entries) {
+    var sorted = entries.slice();
+    if (state.queueSort === 'fare') {
+      sorted.sort(function (a, b) { return b.fare - a.fare; });
+    } else if (state.queueSort === 'destination') {
+      sorted.sort(function (a, b) {
+        return stationById(a.destination).name.localeCompare(stationById(b.destination).name);
+      });
+    } else {
+      sorted.sort(function (a, b) { return a.spawnMonth - b.spawnMonth; });
+    }
+    return sorted;
+  }
+
+  function hasUnlockedNeighbor(stationId) {
+    var adj = getAdjacency()[stationId] || [];
+    for (var i = 0; i < adj.length; i++) {
+      if (state.unlocked[adj[i]]) return true;
+    }
+    return false;
+  }
+
+  function checkUnlockRequirements(stationId) {
+    var s = stationById(stationId);
+    var reasons = [];
+    if (!hasUnlockedNeighbor(stationId)) reasons.push('Needs an unlocked neighboring station on the line.');
+    if (state.cash < s.unlockCost) reasons.push('Not enough cash ($' + s.unlockCost.toLocaleString('en-US') + ' required).');
+    if (state.reputation < s.unlockRep) reasons.push('Reputation too low (' + s.unlockRep + ' required).');
+    return { ok: reasons.length === 0, reasons: reasons };
+  }
+
+  function unlockStation(stationId) {
+    var s = stationById(stationId);
+    var check = checkUnlockRequirements(stationId);
+    if (!check.ok) {
+      alert('Cannot unlock ' + s.name + ' yet:\n' + check.reasons.join('\n'));
+      return;
+    }
+    state.cash -= s.unlockCost;
+    state.unlocked[stationId] = true;
+    if (!state.queues[stationId]) state.queues[stationId] = [];
+    saveState();
+    renderAll();
+  }
+
+  function buildTrack(a, b) {
+    if (isTrackBuilt(a, b)) return;
+    if (!findConnection(a, b)) return;
+    if (!state.unlocked[a] || !state.unlocked[b]) return;
+    if (state.cash < TRACK_COST) {
+      alert('Not enough cash to lay this track. Need $' + TRACK_COST.toLocaleString('en-US') + '.');
+      return;
+    }
+    state.cash -= TRACK_COST;
+    state.trackBuilt[connectionKey(a, b)] = true;
+    saveState();
+    renderAll();
+  }
+
+  function loadGroupsAtStation(train, stationId) {
+    var queue = state.queues[stationId];
+    if (!queue) return;
+    var capacityLeft = train.capacity - train.manifest.length;
+    if (capacityLeft <= 0) return;
+    var eligible = queue.filter(function (g) { return train.route.indexOf(g.destination) !== -1 && g.destination !== stationId; });
+    eligible = sortQueueEntries(eligible).slice(0, capacityLeft);
+    eligible.forEach(function (g) {
+      train.manifest.push(g);
+      var idx = queue.indexOf(g);
+      if (idx !== -1) queue.splice(idx, 1);
+    });
+  }
+
+  function unloadGroupsAtStation(train, stationId) {
+    var remaining = [];
+    var fareCollected = 0;
+    train.manifest.forEach(function (g) {
+      if (g.destination === stationId) fareCollected += g.fare;
+      else remaining.push(g);
+    });
+    train.manifest = remaining;
+    if (fareCollected > 0) {
+      state.cash += fareCollected;
+      state.monthlyRevenue += fareCollected;
+    }
+  }
+
+  function dispatchTrain(trainId) {
+    var train = null;
+    for (var i = 0; i < state.trains.length; i++) {
+      if (state.trains[i].id === trainId) train = state.trains[i];
+    }
+    if (!train || train.route.length < 2) return;
+
+    loadGroupsAtStation(train, train.atStation);
+
+    var nextIndex = train.posIndex + train.dir;
+    if (nextIndex < 0 || nextIndex >= train.route.length) {
+      train.dir *= -1;
+      nextIndex = train.posIndex + train.dir;
+    }
+    train.posIndex = nextIndex;
+    train.atStation = train.route[train.posIndex];
+
+    unloadGroupsAtStation(train, train.atStation);
+
+    saveState();
+    renderAll();
+  }
+
+  function endMonth() {
+    var maintenance = state.trains.length * MAINTENANCE_PER_TRAIN;
+    var unlockedIds = unlockedStationIds();
+    var unlockedCount = unlockedIds.length;
+    var staff = STAFF_BASE + Math.max(0, unlockedCount - 2) * STAFF_PER_EXTRA_STATION;
+    var costs = maintenance + staff;
+    var revenue = state.monthlyRevenue;
+    var net = revenue - costs;
+
+    var overflowCount = unlockedIds.filter(function (id) {
+      return (state.queues[id] || []).length >= QUEUE_MAX_PER_STATION;
+    }).length;
+    var repDelta = (revenue > 0 ? 1 : 0) - overflowCount;
+    state.reputation = Math.max(0, Math.min(100, state.reputation + repDelta));
+
+    var summary = {
+      label: MONTH_NAMES[state.month - 1] + ' ' + state.year,
+      revenue: revenue,
+      maintenance: maintenance,
+      staff: staff,
+      costs: costs,
+      net: net,
+      repDelta: repDelta
+    };
+
+    state.cash += net;
+    state.month += 1;
+    if (state.month > 12) {
+      state.month = 1;
+      state.year += 1;
+    }
+    state.monthlyRevenue = 0;
+    spawnPassengers();
+    saveState();
+    renderAll();
+    showMonthlySummary(summary);
+  }
+
+  /* ---------- RENDERING ---------- */
+
+  function fmtMoney(n) {
+    return '$' + n.toLocaleString('en-US');
+  }
+
+  function setView(view) {
+    ui.view = view;
+    if (view !== 'detail') ui.detailStation = null;
+    renderAll();
+  }
+
+  function openStation(id) {
+    ui.detailStation = id;
+    ui.view = 'detail';
+    renderAll();
+  }
+
+  function renderHeader() {
+    document.getElementById('stat-date').textContent = MONTH_NAMES[state.month - 1] + ' ' + state.year;
+    document.getElementById('stat-cash').textContent = fmtMoney(state.cash);
+    document.getElementById('stat-rep').textContent = state.reputation;
+  }
+
+  function renderNav() {
+    var tabs = { 'nav-stations': 'stations', 'nav-train': 'train', 'nav-build': 'build' };
+    for (var btnId in tabs) {
+      var active = ui.view === tabs[btnId] || (tabs[btnId] === 'stations' && ui.view === 'detail');
+      document.getElementById(btnId).classList.toggle('active', active);
+    }
+  }
+
+  /* Mini town map: orientation + quick select only. All management is text UI. */
+  function renderMiniMap(container) {
+    var wrap = document.createElement('div');
+    wrap.id = 'mini-map-wrap';
+    var box = document.createElement('div');
+    box.id = 'mini-map-box';
+    var svg = svgEl('svg', { id: 'mini-map-svg', viewBox: '0 0 800 720', preserveAspectRatio: 'xMidYMid meet' });
+
+    var img = svgEl('image', {
+      x: -16, y: -24, width: 1536, height: 864,
+      preserveAspectRatio: 'xMidYMid slice',
+      opacity: 0.75
+    });
+    img.setAttributeNS('http://www.w3.org/1999/xlink', 'href', 'map_background.png');
+    img.setAttribute('href', 'map_background.png');
+    svg.appendChild(img);
+
+    CONNECTIONS.forEach(function (pair) {
+      var a = stationById(pair[0]);
+      var b = stationById(pair[1]);
+      var line = svgEl('line', {
+        x1: gx(a.col), y1: gy(a.row),
+        x2: gx(b.col), y2: gy(b.row),
+        'class': 'mm-track' + (isTrackBuilt(a.id, b.id) ? ' built' : '')
+      });
+      svg.appendChild(line);
+    });
+
+    STATIONS.forEach(function (s) {
+      var unlocked = !!state.unlocked[s.id];
+      var g = svgEl('g', { 'class': 'mm-station ' + (unlocked ? 'unlocked' : 'locked') });
+      g.appendChild(svgEl('circle', { 'class': 'base', cx: gx(s.col), cy: gy(s.row), r: 24 }));
+      var num = svgEl('text', { 'class': 'number', x: gx(s.col), y: gy(s.row) });
+      num.textContent = s.num;
+      g.appendChild(num);
+      g.addEventListener('click', function () { openStation(s.id); });
+      svg.appendChild(g);
+    });
+
+    state.trains.forEach(function (train) {
+      var s = stationById(train.atStation);
+      if (!s) return;
+      var tg = svgEl('g', { 'class': 'mm-train' });
+      tg.appendChild(svgEl('rect', {
+        x: gx(s.col) - 36, y: gy(s.row) - 10,
+        width: 26, height: 20, rx: 4
+      }));
+      svg.appendChild(tg);
+    });
+
+    box.appendChild(svg);
+    wrap.appendChild(box);
+    var caption = document.createElement('p');
+    caption.className = 'mini-caption';
+    caption.textContent = 'Town map — tap a station';
+    wrap.appendChild(caption);
+    container.appendChild(wrap);
+  }
+
+  function renderStationsView() {
+    var view = document.getElementById('view-stations');
+    view.innerHTML = '';
+
+    renderMiniMap(view);
+
+    var train = state.trains[0];
+    STATIONS.forEach(function (s) {
+      var unlocked = !!state.unlocked[s.id];
+      var row = document.createElement('button');
+      row.className = 'station-row' + (unlocked ? '' : ' locked');
+
+      var right = '';
+      if (unlocked) {
+        var q = state.queues[s.id] || [];
+        var full = q.length >= QUEUE_MAX_PER_STATION;
+        if (train.atStation === s.id) right += '<span class="badge train">Train</span>';
+        right += '<span class="badge queue' + (full ? ' full' : '') + '">' + q.length + '/' + QUEUE_MAX_PER_STATION + ' waiting</span>';
+      } else {
+        right += '<span class="badge locked-cost">' + fmtMoney(s.unlockCost) + ' · rep ' + s.unlockRep + '</span>';
+      }
+      right += '<span class="badge chevron">&#9654;</span>';
+
+      row.innerHTML =
+        '<span class="row-num">' + s.num + '</span>' +
+        '<span class="row-main">' +
+          '<p class="row-name">' + s.name + '</p>' +
+          '<p class="row-sub">' + s.district + (unlocked ? '' : ' — locked') + '</p>' +
+        '</span>' +
+        '<span class="row-right">' + right + '</span>';
+
+      row.addEventListener('click', function () { openStation(s.id); });
+      view.appendChild(row);
+    });
+  }
+
+  function renderDetailView() {
+    var view = document.getElementById('view-detail');
+    view.innerHTML = '';
+    if (!ui.detailStation) {
+      setView('stations');
+      return;
+    }
+    var s = stationById(ui.detailStation);
+    var unlocked = !!state.unlocked[s.id];
+
+    var back = document.createElement('button');
+    back.className = 'back-btn';
+    back.innerHTML = '&#9664; All stations';
+    back.addEventListener('click', function () { setView('stations'); });
+    view.appendChild(back);
+
+    var head = document.createElement('div');
+    head.className = 'section';
+    head.innerHTML =
+      '<p class="station-title">' + s.num + ' — ' + s.name + '</p>' +
+      '<p class="station-meta">' + s.district + '</p>' +
+      '<span class="lock-status ' + (unlocked ? 'unlocked' : 'locked') + '">' + (unlocked ? 'Unlocked' : 'Locked') + '</span>' +
+      '<p class="station-desc">' + s.character + '</p>';
+    view.appendChild(head);
+
+    if (!unlocked) {
+      view.appendChild(buildUnlockSection(s));
+    }
+
+    view.appendChild(buildQueueSection(s, unlocked));
+    view.appendChild(buildTrainAtStationSection(s, unlocked));
+  }
+
+  function buildUnlockSection(s) {
+    var sec = document.createElement('div');
+    sec.className = 'section';
+    var check = checkUnlockRequirements(s.id);
+
+    sec.innerHTML =
+      '<p class="section-heading">Unlock This Station</p>' +
+      '<div class="summary-row"><span>Unlock cost</span><span class="' + (state.cash >= s.unlockCost ? 'summary-pos' : 'summary-neg') + '">' + fmtMoney(s.unlockCost) + '</span></div>' +
+      '<div class="summary-row"><span>Reputation needed</span><span class="' + (state.reputation >= s.unlockRep ? 'summary-pos' : 'summary-neg') + '">' + s.unlockRep + '</span></div>' +
+      '<div class="summary-row"><span>Line access</span><span class="' + (hasUnlockedNeighbor(s.id) ? 'summary-pos' : 'summary-neg') + '">' + (hasUnlockedNeighbor(s.id) ? 'OK' : 'No unlocked neighbor') + '</span></div>' +
+      '<button class="btn primary" id="unlock-btn" style="width:100%;margin-top:12px;"' + (check.ok ? '' : ' disabled') + '>Unlock ' + s.name + '</button>';
+
+    sec.querySelector('#unlock-btn').addEventListener('click', function () { unlockStation(s.id); });
+    return sec;
+  }
+
+  function buildQueueSection(s, unlocked) {
+    var sec = document.createElement('div');
+    sec.className = 'section';
+
+    if (!unlocked) {
+      sec.innerHTML = '<p class="section-heading">Queue</p><div class="placeholder-box">Station is locked — no passenger demand here yet.</div>';
+      return sec;
+    }
+
+    var queue = state.queues[s.id] || [];
+    var sortModes = [
+      { key: 'wait', label: 'Wait' },
+      { key: 'destination', label: 'Dest' },
+      { key: 'fare', label: 'Fare' }
+    ];
+    var sortRow = '<div class="queue-sort-row">' + sortModes.map(function (m) {
+      return '<button class="queue-sort-btn' + (state.queueSort === m.key ? ' active' : '') + '" data-sort="' + m.key + '">' + m.label + '</button>';
+    }).join('') + '</div>';
+
+    var listHtml;
+    if (queue.length === 0) {
+      listHtml = '<div class="placeholder-box">No passengers waiting.</div>';
+    } else {
+      var nowAbs = state.year * 12 + state.month;
+      var sorted = sortQueueEntries(queue);
+      listHtml = '<div class="queue-list">' + sorted.map(function (g) {
+        var dest = stationById(g.destination);
+        var wait = Math.max(0, nowAbs - g.spawnMonth);
+        return '<div class="queue-item">' +
+          '<span class="queue-dest">&rarr; ' + dest.name + '<br><span class="queue-wait">' + wait + ' mo wait</span></span>' +
+          '<span class="queue-fare">$' + g.fare + '</span>' +
+          '</div>';
+      }).join('') + '</div>';
+    }
+
+    sec.innerHTML = '<p class="section-heading">Queue (' + queue.length + '/' + QUEUE_MAX_PER_STATION + ')</p>' + sortRow + listHtml;
+
+    var btns = sec.querySelectorAll('.queue-sort-btn');
+    for (var i = 0; i < btns.length; i++) {
+      btns[i].addEventListener('click', function () {
+        state.queueSort = this.getAttribute('data-sort');
+        saveState();
+        renderAll();
+      });
+    }
+    return sec;
+  }
+
+  function buildTrainAtStationSection(s, unlocked) {
+    var sec = document.createElement('div');
+    sec.className = 'section';
+    var train = state.trains[0];
+    var hereNow = train.atStation === s.id;
+    var onRoute = train.route.indexOf(s.id) !== -1;
+    var hasRoute = train.route.length >= 2;
+
+    var heading = '<p class="section-heading">Train</p>';
+
+    if (hereNow && hasRoute && unlocked) {
+      sec.innerHTML = heading +
+        '<div class="notice-box" style="margin-bottom:10px;"><strong>' + train.name + '</strong> is here. Onboard ' + train.manifest.length + '/' + train.capacity + ' groups.</div>' +
+        '<div class="btn-row">' +
+          '<button class="btn primary" id="detail-dispatch">Dispatch</button>' +
+        '</div>';
+      sec.querySelector('#detail-dispatch').addEventListener('click', function () { dispatchTrain(train.id); });
+      return sec;
+    }
+
+    if (hereNow) {
+      sec.innerHTML = heading +
+        '<div class="notice-box" style="margin-bottom:10px;">' + train.name + ' is stabled here. Give it a route from the <strong>Train</strong> tab.</div>' +
+        '<div class="btn-row"><button class="btn" id="detail-goto-train">Go to Train tab</button></div>';
+      sec.querySelector('#detail-goto-train').addEventListener('click', function () { setView('train'); });
+      return sec;
+    }
+
+    if (onRoute) {
+      sec.innerHTML = heading + '<div class="placeholder-box">On ' + train.name + '\'s route. Currently at ' + stationById(train.atStation).name + '.</div>';
+      return sec;
+    }
+
+    sec.innerHTML = heading + '<div class="placeholder-box">Not on ' + train.name + '\'s route. Manage the route from the <strong>Train</strong> tab.</div>';
+    return sec;
+  }
+
+  function buildRouteStrip(stops, currentIndex, dir) {
+    var strip = document.createElement('div');
+    strip.className = 'route-strip';
+    stops.forEach(function (id, idx) {
+      var st = stationById(id);
+      var isCurrent = idx === currentIndex;
+      var row = document.createElement('div');
+      row.className = 'rs-row' + (isCurrent ? ' current' : '') + (stops.length === 1 ? ' rs-single' : '');
+
+      var note = '';
+      if (isCurrent && dir !== null) {
+        note = 'Train here' + (stops.length > 1 ? (dir === 1 ? ' &#9660; next' : ' &#9650; next') : '');
+      }
+
+      row.innerHTML =
+        '<div class="rs-marker"><div class="rs-dot"></div></div>' +
+        '<div class="rs-body">' +
+          '<span class="rs-name">' + st.name + '</span>' +
+          (note ? '<span class="rs-note">' + note + '</span>' : '') +
+        '</div>';
+      strip.appendChild(row);
+    });
+    return strip;
+  }
+
+  function startRouteEdit() {
+    ui.editingRoute = true;
+    ui.routeDraft = state.trains[0].route.slice();
+    renderAll();
+  }
+
+  function cancelRouteEdit() {
+    ui.editingRoute = false;
+    ui.routeDraft = [];
+    renderAll();
+  }
+
+  function saveRouteDraft() {
+    var train = state.trains[0];
+    if (ui.routeDraft.length < 2) {
+      alert('A route needs at least two stops. Add another connected station.');
+      return;
+    }
+    train.route = ui.routeDraft.slice();
+    train.posIndex = 0;
+    train.dir = 1;
+    train.atStation = train.route[0];
+    ui.editingRoute = false;
+    ui.routeDraft = [];
+    saveState();
+    renderAll();
+  }
+
+  function addDraftStop(id) {
+    var draft = ui.routeDraft;
+    if (draft.length > 0) {
+      var last = draft[draft.length - 1];
+      if (last === id) return;
+      if (!isTrackBuilt(last, id)) return;
+    }
+    draft.push(id);
+    renderAll();
+  }
+
+  function draftCandidates() {
+    var draft = ui.routeDraft;
+    if (draft.length === 0) {
+      return unlockedStationIds();
+    }
+    var last = draft[draft.length - 1];
+    var adj = getAdjacency()[last] || [];
+    return adj.filter(function (id) {
+      return state.unlocked[id] && isTrackBuilt(last, id) && id !== last;
+    });
+  }
+
+  function renderTrainView() {
+    var view = document.getElementById('view-train');
+    view.innerHTML = '';
+    var train = state.trains[0];
+
+    var card = document.createElement('div');
+    card.className = 'section';
+    card.innerHTML =
+      '<p class="train-name">' + train.name + '</p>' +
+      '<p class="train-flavor">' + train.flavor + '</p>' +
+      '<div class="train-specs">' +
+        '<span>Onboard <strong>' + train.manifest.length + '/' + train.capacity + ' groups</strong></span>' +
+        '<span>Speed <strong>' + train.speedLabel + '</strong></span>' +
+        '<span>At <strong>' + stationById(train.atStation).name + '</strong></span>' +
+      '</div>';
+    view.appendChild(card);
+
+    // Manifest — who is onboard and where they're going
+    var manifestSec = document.createElement('div');
+    manifestSec.className = 'section';
+    var manifestHtml;
+    if (train.manifest.length === 0) {
+      manifestHtml = '<div class="placeholder-box">No passengers onboard.</div>';
+    } else {
+      manifestHtml = '<div class="queue-list">' + train.manifest.map(function (g) {
+        var dest = stationById(g.destination);
+        return '<div class="queue-item">' +
+          '<span class="queue-dest">&rarr; ' + dest.name + '</span>' +
+          '<span class="queue-fare">$' + g.fare + '</span>' +
+          '</div>';
+      }).join('') + '</div>';
+    }
+    manifestSec.innerHTML = '<p class="section-heading">Onboard (' + train.manifest.length + '/' + train.capacity + ')</p>' + manifestHtml;
+    view.appendChild(manifestSec);
+
+    var routeSec = document.createElement('div');
+    routeSec.className = 'section';
+
+    if (ui.editingRoute) {
+      routeSec.innerHTML = '<p class="section-heading">Editing Route</p>';
+
+      if (ui.routeDraft.length === 0) {
+        var hint = document.createElement('div');
+        hint.className = 'placeholder-box';
+        hint.style.marginBottom = '12px';
+        hint.textContent = 'Pick a starting station below.';
+        routeSec.appendChild(hint);
+      } else {
+        routeSec.appendChild(buildRouteStrip(ui.routeDraft, -1, null));
+      }
+
+      var candidates = draftCandidates();
+      var candHeading = document.createElement('p');
+      candHeading.className = 'section-heading';
+      candHeading.style.marginTop = '12px';
+      candHeading.textContent = ui.routeDraft.length === 0 ? 'Start at' : 'Add next stop';
+      routeSec.appendChild(candHeading);
+
+      if (candidates.length === 0) {
+        var noCand = document.createElement('div');
+        noCand.className = 'placeholder-box';
+        var lastName = stationById(ui.routeDraft[ui.routeDraft.length - 1]).name;
+        noCand.innerHTML = 'No built track onward from ' + lastName + '. Lay track in the <strong>Build</strong> tab, or undo the last stop.';
+        routeSec.appendChild(noCand);
+      } else {
+        var candList = document.createElement('div');
+        candList.className = 'candidate-list';
+        candidates.forEach(function (id) {
+          var b = document.createElement('button');
+          b.className = 'candidate-btn';
+          b.textContent = stationById(id).name;
+          b.addEventListener('click', function () { addDraftStop(id); });
+          candList.appendChild(b);
+        });
+        routeSec.appendChild(candList);
+      }
+
+      var btnRow = document.createElement('div');
+      btnRow.className = 'btn-row';
+      btnRow.style.marginTop = '14px';
+
+      var undoBtn = document.createElement('button');
+      undoBtn.className = 'btn small';
+      undoBtn.textContent = 'Undo';
+      undoBtn.disabled = ui.routeDraft.length === 0;
+      undoBtn.addEventListener('click', function () { ui.routeDraft.pop(); renderAll(); });
+
+      var clearBtn = document.createElement('button');
+      clearBtn.className = 'btn small';
+      clearBtn.textContent = 'Clear';
+      clearBtn.disabled = ui.routeDraft.length === 0;
+      clearBtn.addEventListener('click', function () { ui.routeDraft = []; renderAll(); });
+
+      var cancelBtn = document.createElement('button');
+      cancelBtn.className = 'btn small';
+      cancelBtn.textContent = 'Cancel';
+      cancelBtn.addEventListener('click', cancelRouteEdit);
+
+      var saveBtn = document.createElement('button');
+      saveBtn.className = 'btn primary';
+      saveBtn.textContent = 'Save Route';
+      saveBtn.addEventListener('click', saveRouteDraft);
+
+      btnRow.appendChild(undoBtn);
+      btnRow.appendChild(clearBtn);
+      btnRow.appendChild(cancelBtn);
+      btnRow.appendChild(saveBtn);
+      routeSec.appendChild(btnRow);
+    } else {
+      routeSec.innerHTML = '<p class="section-heading">Route</p>';
+
+      if (train.route.length === 0) {
+        var empty = document.createElement('div');
+        empty.className = 'placeholder-box';
+        empty.textContent = 'No route set. Old Betsy is going nowhere.';
+        routeSec.appendChild(empty);
+      } else {
+        routeSec.appendChild(buildRouteStrip(train.route, train.posIndex, train.dir));
+      }
+
+      var actions = document.createElement('div');
+      actions.className = 'btn-row';
+      actions.style.marginTop = '12px';
+
+      var editBtn = document.createElement('button');
+      editBtn.className = 'btn';
+      editBtn.textContent = train.route.length === 0 ? 'Set Route' : 'Edit Route';
+      editBtn.addEventListener('click', startRouteEdit);
+
+      var dispatchBtn = document.createElement('button');
+      dispatchBtn.className = 'btn primary';
+      dispatchBtn.textContent = 'Dispatch';
+      dispatchBtn.disabled = train.route.length < 2;
+      dispatchBtn.addEventListener('click', function () { dispatchTrain(train.id); });
+
+      actions.appendChild(editBtn);
+      actions.appendChild(dispatchBtn);
+      routeSec.appendChild(actions);
+    }
+
+    view.appendChild(routeSec);
+  }
+
+  function renderBuildView() {
+    var view = document.getElementById('view-build');
+    view.innerHTML = '';
+
+    var intro = document.createElement('div');
+    intro.className = 'section';
+    intro.innerHTML =
+      '<p class="section-heading">Lay Track</p>' +
+      '<div class="notice-box">Track costs <strong>' + fmtMoney(TRACK_COST) + '</strong> per segment. Both stations must be unlocked. Trains can only run over built track.</div>';
+    view.appendChild(intro);
+
+    CONNECTIONS.forEach(function (pair) {
+      var a = stationById(pair[0]);
+      var b = stationById(pair[1]);
+      var built = isTrackBuilt(a.id, b.id);
+      var bothUnlocked = !!state.unlocked[a.id] && !!state.unlocked[b.id];
+
+      var row = document.createElement('div');
+      row.className = 'segment-row' + (built || bothUnlocked ? '' : ' unavailable');
+
+      var sub;
+      if (built) {
+        sub = 'In service';
+      } else if (!bothUnlocked) {
+        var lockedNames = [];
+        if (!state.unlocked[a.id]) lockedNames.push(a.name);
+        if (!state.unlocked[b.id]) lockedNames.push(b.name);
+        sub = 'Unlock ' + lockedNames.join(' and ') + ' first';
+      } else {
+        sub = 'Ready to build — ' + fmtMoney(TRACK_COST);
+      }
+
+      var main = document.createElement('div');
+      main.className = 'seg-main';
+      main.innerHTML =
+        '<p class="seg-names">' + a.name + ' <span class="seg-link">&#8596;</span> ' + b.name + '</p>' +
+        '<p class="seg-sub">' + sub + '</p>';
+      row.appendChild(main);
+
+      var status = document.createElement('div');
+      status.className = 'seg-status';
+      if (built) {
+        status.innerHTML = '<span class="badge built">Built</span>';
+      } else if (bothUnlocked) {
+        var buildBtn = document.createElement('button');
+        buildBtn.className = 'btn small primary';
+        buildBtn.textContent = 'Build';
+        buildBtn.disabled = state.cash < TRACK_COST;
+        buildBtn.addEventListener('click', function () { buildTrack(a.id, b.id); });
+        status.appendChild(buildBtn);
+      } else {
+        status.innerHTML = '<span class="badge locked-cost">Locked</span>';
+      }
+      row.appendChild(status);
+
+      view.appendChild(row);
+    });
+  }
+
+  function showMonthlySummary(summary) {
+    var body = document.getElementById('summary-body');
+    var sign = summary.net >= 0 ? '+' : '−';
+    body.innerHTML =
+      '<p class="train-name" style="margin-bottom:14px;">' + summary.label + '</p>' +
+      '<div class="summary-row"><span>Fares collected</span><span class="summary-pos">+' + fmtMoney(summary.revenue) + '</span></div>' +
+      '<div class="summary-row"><span>Maintenance</span><span class="summary-neg">−' + fmtMoney(summary.maintenance) + '</span></div>' +
+      '<div class="summary-row"><span>Staff overhead</span><span class="summary-neg">−' + fmtMoney(summary.staff) + '</span></div>' +
+      '<div class="summary-row summary-net"><span>Net</span><span class="' + (summary.net >= 0 ? 'summary-pos' : 'summary-neg') + '">' + sign + fmtMoney(Math.abs(summary.net)) + '</span></div>' +
+      '<div class="summary-row"><span>Reputation</span><span class="' + (summary.repDelta >= 0 ? 'summary-pos' : 'summary-neg') + '">' + (summary.repDelta >= 0 ? '+' : '') + summary.repDelta + '</span></div>' +
+      '<div class="summary-row summary-balance"><span>Cash balance</span><span>' + fmtMoney(state.cash) + '</span></div>' +
+      '<button class="btn primary" id="summary-continue" style="width:100%;margin-top:14px;">Continue</button>';
+    document.getElementById('summary-continue').addEventListener('click', closeSummary);
+    document.getElementById('summary-overlay').classList.add('visible');
+  }
+
+  function closeSummary() {
+    document.getElementById('summary-overlay').classList.remove('visible');
+  }
+
+  function renderAll() {
+    renderHeader();
+    renderNav();
+
+    var views = ['stations', 'detail', 'train', 'build'];
+    views.forEach(function (v) {
+      document.getElementById('view-' + v).classList.toggle('active', ui.view === v);
+    });
+
+    if (ui.view === 'stations') renderStationsView();
+    else if (ui.view === 'detail') renderDetailView();
+    else if (ui.view === 'train') renderTrainView();
+    else if (ui.view === 'build') renderBuildView();
+  }
+
+  document.getElementById('nav-stations').addEventListener('click', function () { setView('stations'); });
+  document.getElementById('nav-train').addEventListener('click', function () { setView('train'); });
+  document.getElementById('nav-build').addEventListener('click', function () { setView('build'); });
+  document.getElementById('nav-end-month').addEventListener('click', endMonth);
+
+  if (!state.seeded) {
+    spawnPassengers();
+    state.seeded = true;
+    saveState();
+  }
+
+  renderAll();
+})();
+</script>
+</body>
+</html>
