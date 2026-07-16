@@ -1,5 +1,7 @@
 # Millhaven Transit Authority — Dev Log
 
+> **Current status:** Playable core loop, two UIs on a shared sim core. `game.js` holds all rules; `index.html` (desktop schematic map) and `mobile.html` (phone-first text UI) render it and share one save (`mta_save_v3`). No build step — open either HTML file. Next: fleet expansion (GDD §6), then seasonal demand (§8).
+
 ## Session 2 — 2026-07-15
 
 ### State at end of session
