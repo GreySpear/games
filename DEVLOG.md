@@ -2,6 +2,14 @@
 
 > **Current status:** Playable core loop, two UIs on a shared sim core. `game.js` holds all rules; `index.html` (desktop schematic map) and `mobile.html` (phone-first text UI) render it and share one save (`mta_save_v3`). No build step — open either HTML file. Next: fleet expansion (GDD §6), then seasonal demand (§8).
 
+## Session 3 — 2026-07-22
+
+### Mobile real-device hardening + persistent control board
+Real-device pass on `mobile.html` (served via GitHub Pages off the feature branch).
+
+- **Layout hardening for phones**: `viewport-fit=cover` so `env(safe-area-inset-*)` actually resolve; header padded past the notch/status bar (top) and rounded corners (sides); bottom nav extended to landscape side insets; `-webkit-tap-highlight-color: transparent`; `overscroll-behavior: none` to kill page rubber-band / pull-to-refresh.
+- **Persistent control board** (replaces the per-tab town mini-map): a dispatcher's mimic panel pinned between header and the scroll area, **visible on every tab**. Dark screen with scanline/vignette, glowing built-track lines vs faint dashed unbuilt conduit, station indicator lamps (lit = unlocked), per-station queue LEDs (green/amber/red by load), a pulsing train locator halo, and a mono status ticker (train position + next stop, station/track counts). Tapping any lamp jumps to that station's detail from any tab. Dropped the `map_background.png` photo underlay — the board is now a pure schematic. `renderControlBoard()` runs on every `renderAll()`; `prefers-reduced-motion` disables the blink/pulse.
+
 ## Session 2 — 2026-07-15
 
 ### State at end of session

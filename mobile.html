@@ -141,79 +141,154 @@
 
   .notice-box strong { color: var(--amber); }
 
-  /* MINI MAP */
-  #mini-map-wrap {
-    background: var(--navy);
-    padding: 10px 14px 4px 14px;
+  /* CONTROL BOARD (persistent dispatcher's mimic panel) */
+  #control-board {
+    flex-shrink: 0;
+    background: var(--navy-light);
+    border-bottom: 2px solid var(--amber);
+    padding: 6px 10px 7px;
   }
 
-  #mini-map-box {
-    border: 1px solid var(--line-grey);
+  .cb-topbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 5px;
+  }
+
+  .cb-title {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--amber);
+  }
+
+  .cb-status {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font-family: var(--font-mono);
+    font-size: 9px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--ok-green);
+  }
+
+  .cb-status::before {
+    content: '';
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--ok-green);
+    box-shadow: 0 0 6px var(--ok-green);
+    animation: cb-blink 2.2s ease-in-out infinite;
+  }
+
+  .cb-screen {
+    position: relative;
+    height: 30vh;
+    max-height: 208px;
+    min-height: 146px;
     border-radius: 6px;
+    border: 1px solid rgba(0,0,0,0.5);
+    background-color: #070b17;
+    background-image:
+      radial-gradient(ellipse at 50% 45%, rgba(34,50,88,0.35), rgba(7,11,23,0) 70%),
+      repeating-linear-gradient(0deg, rgba(255,255,255,0.025) 0 1px, transparent 1px 14px);
+    box-shadow: inset 0 0 20px rgba(0,0,0,0.75);
     overflow: hidden;
-    background: var(--navy);
   }
 
-  #mini-map-svg {
+  #cb-svg {
     display: block;
     width: 100%;
-    height: 190px;
+    height: 100%;
     touch-action: manipulation;
   }
 
-  .mini-caption {
-    font-size: 10px;
-    color: #7b84a0;
-    text-transform: uppercase;
-    letter-spacing: 0.06em;
-    text-align: center;
-    margin: 6px 0 4px 0;
-  }
-
-  .mm-track {
-    stroke: var(--line-grey);
-    stroke-width: 6;
-    stroke-linecap: round;
-    stroke-dasharray: 2 12;
-    fill: none;
-  }
-
-  .mm-track.built {
-    stroke: var(--amber);
-    stroke-dasharray: none;
-  }
-
-  .mm-station { cursor: pointer; }
-
-  .mm-station circle.base { stroke-width: 5; }
-
-  .mm-station.unlocked circle.base {
-    fill: var(--navy);
-    stroke: var(--amber);
-  }
-
-  .mm-station.locked circle.base {
-    fill: var(--off-white);
-    stroke: var(--navy-light);
-    stroke-dasharray: 5 4;
-  }
-
-  .mm-station text.number {
-    fill: var(--amber);
+  .cb-ticker {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    margin-top: 5px;
     font-family: var(--font-mono);
-    font-size: 17px;
-    font-weight: 700;
-    pointer-events: none;
-    text-anchor: middle;
-    dominant-baseline: middle;
+    font-size: 9px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: #8891ab;
+    white-space: nowrap;
+    overflow: hidden;
   }
 
-  .mm-station.locked text.number { fill: var(--navy-light); }
+  .cb-ticker span { overflow: hidden; text-overflow: ellipsis; }
+  #cb-ticker-train { color: var(--amber); flex: 1 1 auto; min-width: 0; }
+  #cb-ticker-net { flex: 0 0 auto; }
 
-  .mm-train rect {
+  /* Track segments */
+  .cb-track {
+    stroke: #2b3550;
+    stroke-width: 4;
+    stroke-linecap: round;
+    stroke-dasharray: 2 11;
+    fill: none;
+    opacity: 0.7;
+  }
+
+  .cb-track.built {
+    stroke: var(--amber);
+    stroke-width: 5;
+    stroke-dasharray: none;
+    opacity: 1;
+    filter: drop-shadow(0 0 3px rgba(232,163,61,0.7));
+  }
+
+  /* Station indicator lamps */
+  .cb-station { cursor: pointer; }
+  .cb-station .ring { fill: #0c1326; stroke-width: 2.5; }
+  .cb-station.unlocked .ring { stroke: var(--amber-dim); }
+  .cb-station.locked .ring { stroke: #39435f; stroke-dasharray: 4 4; }
+
+  .cb-station.unlocked .lamp {
     fill: var(--amber);
-    stroke: var(--navy);
-    stroke-width: 2;
+    filter: drop-shadow(0 0 5px rgba(232,163,61,0.9));
+  }
+  .cb-station.locked .lamp { fill: #141d33; }
+
+  .cb-station .num {
+    font-family: var(--font-mono);
+    font-size: 16px;
+    font-weight: 700;
+    text-anchor: middle;
+    dominant-baseline: central;
+    pointer-events: none;
+  }
+  .cb-station.unlocked .num { fill: var(--navy); }
+  .cb-station.locked .num { fill: #55607e; }
+
+  .cb-station.selected .ring { stroke: #ffffff; stroke-width: 3.5; }
+
+  /* Queue-status LED per unlocked station */
+  .cb-led { stroke: rgba(0,0,0,0.5); stroke-width: 1; }
+  .cb-led.ok { fill: var(--ok-green); filter: drop-shadow(0 0 3px rgba(79,138,91,0.9)); }
+  .cb-led.warn { fill: var(--amber); filter: drop-shadow(0 0 3px rgba(232,163,61,0.9)); }
+  .cb-led.full { fill: var(--warn-red); filter: drop-shadow(0 0 4px rgba(179,69,63,1)); }
+
+  /* Train locator halo */
+  .cb-train-halo {
+    fill: none;
+    stroke: var(--ok-green);
+    stroke-width: 3;
+    filter: drop-shadow(0 0 6px rgba(79,138,91,0.9));
+    animation: cb-pulse 1.5s ease-in-out infinite;
+  }
+
+  @keyframes cb-blink { 0%, 100% { opacity: 1; } 50% { opacity: 0.25; } }
+  @keyframes cb-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
+
+  @media (prefers-reduced-motion: reduce) {
+    .cb-status::before, .cb-train-halo { animation: none; }
   }
 
   /* STATION LIST */
@@ -736,6 +811,20 @@
     </div>
   </header>
 
+  <div id="control-board">
+    <div class="cb-topbar">
+      <span class="cb-title">&#9673; Millhaven Network</span>
+      <span class="cb-status">Live</span>
+    </div>
+    <div class="cb-screen">
+      <svg id="cb-svg" viewBox="200 40 640 720" preserveAspectRatio="xMidYMid meet"></svg>
+    </div>
+    <div class="cb-ticker">
+      <span id="cb-ticker-train">&mdash;</span>
+      <span id="cb-ticker-net">&mdash;</span>
+    </div>
+  </div>
+
   <main>
     <div class="view" id="view-stations"></div>
     <div class="view" id="view-detail"></div>
@@ -863,70 +952,86 @@
     }
   }
 
-  /* Mini town map: orientation + quick select only. All management is text UI. */
-  function renderMiniMap(container) {
-    var wrap = document.createElement('div');
-    wrap.id = 'mini-map-wrap';
-    var box = document.createElement('div');
-    box.id = 'mini-map-box';
-    var svg = svgEl('svg', { id: 'mini-map-svg', viewBox: '0 0 800 720', preserveAspectRatio: 'xMidYMid meet' });
+  /* Persistent dispatcher's control board: schematic mimic panel, always
+     visible across tabs. Track lamps, live train locator, queue LEDs. Tapping
+     a station lamp jumps to its detail from any tab. */
+  function renderControlBoard() {
+    var svg = document.getElementById('cb-svg');
+    while (svg.firstChild) svg.removeChild(svg.firstChild);
 
-    var img = svgEl('image', {
-      x: -16, y: -24, width: 1536, height: 864,
-      preserveAspectRatio: 'xMidYMid slice',
-      opacity: 0.75
-    });
-    img.setAttributeNS('http://www.w3.org/1999/xlink', 'href', 'map_background.png');
-    img.setAttribute('href', 'map_background.png');
-    svg.appendChild(img);
-
+    // Track segments — built ones glow, unbuilt read as faint dashed conduit.
     CONNECTIONS.forEach(function (pair) {
       var a = stationById(pair[0]);
       var b = stationById(pair[1]);
-      var line = svgEl('line', {
+      svg.appendChild(svgEl('line', {
         x1: gx(a.col), y1: gy(a.row),
         x2: gx(b.col), y2: gy(b.row),
-        'class': 'mm-track' + (isTrackBuilt(a.id, b.id) ? ' built' : '')
-      });
-      svg.appendChild(line);
+        'class': 'cb-track' + (isTrackBuilt(a.id, b.id) ? ' built' : '')
+      }));
     });
 
+    // Train locator — a pulsing halo ring on each train's current station.
+    state.trains.forEach(function (train) {
+      var s = stationById(train.atStation);
+      if (!s) return;
+      svg.appendChild(svgEl('circle', {
+        'class': 'cb-train-halo', cx: gx(s.col), cy: gy(s.row), r: 27
+      }));
+    });
+
+    // Station indicator lamps.
     STATIONS.forEach(function (s) {
       var unlocked = !!state.unlocked[s.id];
-      var g = svgEl('g', { 'class': 'mm-station ' + (unlocked ? 'unlocked' : 'locked') });
-      g.appendChild(svgEl('circle', { 'class': 'base', cx: gx(s.col), cy: gy(s.row), r: 24 }));
-      var num = svgEl('text', { 'class': 'number', x: gx(s.col), y: gy(s.row) });
+      var selected = ui.view === 'detail' && ui.detailStation === s.id;
+      var g = svgEl('g', { 'class': 'cb-station ' + (unlocked ? 'unlocked' : 'locked') + (selected ? ' selected' : '') });
+      g.appendChild(svgEl('circle', { 'class': 'ring', cx: gx(s.col), cy: gy(s.row), r: 22 }));
+      g.appendChild(svgEl('circle', { 'class': 'lamp', cx: gx(s.col), cy: gy(s.row), r: 13 }));
+      var num = svgEl('text', { 'class': 'num', x: gx(s.col), y: gy(s.row) });
       num.textContent = s.num;
       g.appendChild(num);
+
+      // Queue-load LED (green ok / amber filling / red full) on the rim.
+      if (unlocked) {
+        var q = state.queues[s.id] || [];
+        var cls = 'ok';
+        if (q.length >= QUEUE_MAX_PER_STATION) cls = 'full';
+        else if (q.length >= QUEUE_MAX_PER_STATION - 2) cls = 'warn';
+        g.appendChild(svgEl('circle', { 'class': 'cb-led ' + cls, cx: gx(s.col) + 16, cy: gy(s.row) - 16, r: 4.5 }));
+      }
+
       g.addEventListener('click', function () { openStation(s.id); });
       svg.appendChild(g);
     });
 
-    state.trains.forEach(function (train) {
-      var s = stationById(train.atStation);
-      if (!s) return;
-      var tg = svgEl('g', { 'class': 'mm-train' });
-      tg.appendChild(svgEl('rect', {
-        x: gx(s.col) - 36, y: gy(s.row) - 10,
-        width: 26, height: 20, rx: 4
-      }));
-      svg.appendChild(tg);
-    });
+    renderTicker();
+  }
 
-    box.appendChild(svg);
-    wrap.appendChild(box);
-    var caption = document.createElement('p');
-    caption.className = 'mini-caption';
-    caption.textContent = 'Town map — tap a station';
-    wrap.appendChild(caption);
-    container.appendChild(wrap);
+  function renderTicker() {
+    var train = state.trains[0];
+    var trainTxt;
+    if (!train) {
+      trainTxt = 'No train';
+    } else {
+      var at = stationById(train.atStation);
+      var atName = at ? at.name : '?';
+      if (train.route.length >= 2) {
+        var next = train.route[train.posIndex + train.dir];
+        var nextName = next ? stationById(next).name : 'terminus';
+        trainTxt = train.name + ' · at ' + atName + ' · next ' + nextName;
+      } else {
+        trainTxt = train.name + ' · at ' + atName + ' · no route';
+      }
+    }
+
+    var trackBuilt = CONNECTIONS.filter(function (p) { return isTrackBuilt(p[0], p[1]); }).length;
+    document.getElementById('cb-ticker-train').textContent = trainTxt;
+    document.getElementById('cb-ticker-net').textContent =
+      'stn ' + unlockedStationIds().length + '/' + STATIONS.length + ' · trk ' + trackBuilt;
   }
 
   function renderStationsView() {
     var view = document.getElementById('view-stations');
     view.innerHTML = '';
-
-    renderMiniMap(view);
 
     var train = state.trains[0];
     STATIONS.forEach(function (s) {
@@ -1393,6 +1498,7 @@
   function renderAll() {
     renderHeader();
     renderNav();
+    renderControlBoard();
 
     var views = ['stations', 'detail', 'train', 'build'];
     views.forEach(function (v) {
