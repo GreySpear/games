@@ -525,6 +525,46 @@
 
   .train-specs span strong { color: var(--off-white); }
 
+  /* FLEET ROSTER */
+  .fleet-roster {
+    display: flex;
+    gap: 8px;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    padding-bottom: 2px;
+  }
+
+  .fleet-chip {
+    flex: 0 0 auto;
+    min-width: 132px;
+    text-align: left;
+    background: var(--navy);
+    border: 1px solid var(--line-grey);
+    border-radius: 6px;
+    color: var(--off-white);
+    font-family: var(--font-ui);
+    padding: 9px 12px;
+    min-height: 48px;
+    cursor: pointer;
+  }
+
+  .fleet-chip.active {
+    border-color: var(--amber);
+    box-shadow: inset 0 0 0 1px var(--amber);
+  }
+
+  .fleet-chip:active { background: rgba(232,163,61,0.12); }
+
+  .fleet-chip .fc-name { font-size: 13px; font-weight: 700; }
+  .fleet-chip.active .fc-name { color: var(--amber); }
+
+  .fleet-chip .fc-sub {
+    font-size: 10px;
+    color: #9aa3bd;
+    font-family: var(--font-mono);
+    margin-top: 2px;
+  }
+
   /* ROUTE STRIP (vertical line diagram) */
   .route-strip { padding: 4px 0; }
 
@@ -861,7 +901,8 @@
       CONNECTIONS = MTA.CONNECTIONS,
       MONTH_NAMES = MTA.MONTH_NAMES,
       TRACK_COST = MTA.TRACK_COST,
-      QUEUE_MAX_PER_STATION = MTA.QUEUE_MAX_PER_STATION;
+      QUEUE_MAX_PER_STATION = MTA.QUEUE_MAX_PER_STATION,
+      TRAIN_TYPES = MTA.TRAIN_TYPES;
   var gx = MTA.gx,
       gy = MTA.gy,
       stationById = MTA.stationById,
@@ -883,6 +924,7 @@
   var ui = {
     view: 'stations',       // stations | detail | train | build
     detailStation: null,
+    selectedTrain: null,    // which train the Train tab is focused on
     editingRoute: false,
     routeDraft: []
   };
@@ -912,6 +954,25 @@
   function dispatchTrain(trainId) {
     if (!MTA.dispatchTrain(trainId)) return;
     renderAll();
+  }
+
+  function buyTrain(typeId) {
+    var res = MTA.buyTrain(typeId);
+    if (!res.ok) { if (res.reason) alert(res.reason); return; }
+    ui.selectedTrain = res.train.id; // focus the newly bought train
+    renderAll();
+  }
+
+  // The Train tab is focused on one train at a time; default to the first.
+  function getSelectedTrain() {
+    var t = null;
+    if (ui.selectedTrain) {
+      for (var i = 0; i < state.trains.length; i++) {
+        if (state.trains[i].id === ui.selectedTrain) { t = state.trains[i]; break; }
+      }
+    }
+    if (!t) { t = state.trains[0] || null; ui.selectedTrain = t ? t.id : null; }
+    return t;
   }
 
   function endMonth() {
@@ -1033,7 +1094,6 @@
     var view = document.getElementById('view-stations');
     view.innerHTML = '';
 
-    var train = state.trains[0];
     STATIONS.forEach(function (s) {
       var unlocked = !!state.unlocked[s.id];
       var row = document.createElement('button');
@@ -1043,7 +1103,8 @@
       if (unlocked) {
         var q = state.queues[s.id] || [];
         var full = q.length >= QUEUE_MAX_PER_STATION;
-        if (train.atStation === s.id) right += '<span class="badge train">Train</span>';
+        var trainsHere = state.trains.filter(function (t) { return t.atStation === s.id; }).length;
+        if (trainsHere) right += '<span class="badge train">Train' + (trainsHere > 1 ? ' &times;' + trainsHere : '') + '</span>';
         right += '<span class="badge queue' + (full ? ' full' : '') + '">' + q.length + '/' + QUEUE_MAX_PER_STATION + ' waiting</span>';
       } else {
         right += '<span class="badge locked-cost">' + fmtMoney(s.unlockCost) + ' · rep ' + s.unlockRep + '</span>';
@@ -1163,38 +1224,57 @@
   function buildTrainAtStationSection(s, unlocked) {
     var sec = document.createElement('div');
     sec.className = 'section';
-    var train = state.trains[0];
-    var hereNow = train.atStation === s.id;
-    var onRoute = train.route.indexOf(s.id) !== -1;
-    var hasRoute = train.route.length >= 2;
+    sec.innerHTML = '<p class="section-heading">Trains</p>';
 
-    var heading = '<p class="section-heading">Train</p>';
-
-    if (hereNow && hasRoute && unlocked) {
-      sec.innerHTML = heading +
-        '<div class="notice-box" style="margin-bottom:10px;"><strong>' + train.name + '</strong> is here. Onboard ' + train.manifest.length + '/' + train.capacity + ' groups.</div>' +
-        '<div class="btn-row">' +
-          '<button class="btn primary" id="detail-dispatch">Dispatch</button>' +
-        '</div>';
-      sec.querySelector('#detail-dispatch').addEventListener('click', function () { dispatchTrain(train.id); });
+    if (!unlocked) {
+      sec.appendChild(placeholder('Station is locked — no service here yet.'));
       return sec;
     }
 
-    if (hereNow) {
-      sec.innerHTML = heading +
-        '<div class="notice-box" style="margin-bottom:10px;">' + train.name + ' is stabled here. Give it a route from the <strong>Train</strong> tab.</div>' +
-        '<div class="btn-row"><button class="btn" id="detail-goto-train">Go to Train tab</button></div>';
-      sec.querySelector('#detail-goto-train').addEventListener('click', function () { setView('train'); });
+    var here = state.trains.filter(function (t) { return t.atStation === s.id; });
+    if (here.length === 0) {
+      var onRoute = state.trains.filter(function (t) { return t.route.indexOf(s.id) !== -1; });
+      sec.appendChild(placeholder(onRoute.length
+        ? 'On ' + onRoute.length + ' route' + (onRoute.length > 1 ? 's' : '') + ', but no train is standing here right now.'
+        : 'No train here. Route one through this station from the Train tab.'));
       return sec;
     }
 
-    if (onRoute) {
-      sec.innerHTML = heading + '<div class="placeholder-box">On ' + train.name + '\'s route. Currently at ' + stationById(train.atStation).name + '.</div>';
-      return sec;
-    }
+    here.forEach(function (train) {
+      var hasRoute = train.route.length >= 2;
+      var box = document.createElement('div');
+      box.className = 'notice-box';
+      box.style.margin = '0 0 8px 0';
+      box.innerHTML = '<strong>' + train.name + '</strong> — onboard ' + train.manifest.length + '/' + train.capacity +
+        (hasRoute ? '.' : '. No route set.');
+      sec.appendChild(box);
 
-    sec.innerHTML = heading + '<div class="placeholder-box">Not on ' + train.name + '\'s route. Manage the route from the <strong>Train</strong> tab.</div>';
+      var row = document.createElement('div');
+      row.className = 'btn-row';
+      row.style.margin = '0 0 12px 0';
+      if (hasRoute) {
+        var d = document.createElement('button');
+        d.className = 'btn primary';
+        d.textContent = 'Dispatch';
+        d.addEventListener('click', function () { dispatchTrain(train.id); });
+        row.appendChild(d);
+      } else {
+        var g = document.createElement('button');
+        g.className = 'btn';
+        g.textContent = 'Set route';
+        g.addEventListener('click', function () { ui.selectedTrain = train.id; setView('train'); });
+        row.appendChild(g);
+      }
+      sec.appendChild(row);
+    });
     return sec;
+  }
+
+  function placeholder(text) {
+    var d = document.createElement('div');
+    d.className = 'placeholder-box';
+    d.textContent = text;
+    return d;
   }
 
   function buildRouteStrip(stops, currentIndex, dir) {
@@ -1224,7 +1304,7 @@
 
   function startRouteEdit() {
     ui.editingRoute = true;
-    ui.routeDraft = state.trains[0].route.slice();
+    ui.routeDraft = getSelectedTrain().route.slice();
     renderAll();
   }
 
@@ -1235,7 +1315,7 @@
   }
 
   function saveRouteDraft() {
-    var train = state.trains[0];
+    var train = getSelectedTrain();
     if (ui.routeDraft.length < 2) {
       alert('A route needs at least two stops. Add another connected station.');
       return;
@@ -1276,7 +1356,15 @@
   function renderTrainView() {
     var view = document.getElementById('view-train');
     view.innerHTML = '';
-    var train = state.trains[0];
+
+    // Fleet roster: pick which train this tab controls (only when >1).
+    if (state.trains.length > 1) view.appendChild(buildFleetRoster());
+
+    var train = getSelectedTrain();
+    if (!train) {
+      view.appendChild(buildBuySection());
+      return;
+    }
 
     var card = document.createElement('div');
     card.className = 'section';
@@ -1414,6 +1502,77 @@
     }
 
     view.appendChild(routeSec);
+    view.appendChild(buildBuySection());
+  }
+
+  function buildFleetRoster() {
+    var sec = document.createElement('div');
+    sec.className = 'section';
+    sec.innerHTML = '<p class="section-heading">Fleet (' + state.trains.length + ')</p>';
+
+    var roster = document.createElement('div');
+    roster.className = 'fleet-roster';
+    var selId = getSelectedTrain() ? getSelectedTrain().id : null;
+    state.trains.forEach(function (t) {
+      var chip = document.createElement('button');
+      chip.className = 'fleet-chip' + (t.id === selId ? ' active' : '');
+      var where = stationById(t.atStation) ? stationById(t.atStation).name : '—';
+      chip.innerHTML =
+        '<div class="fc-name">' + t.name + '</div>' +
+        '<div class="fc-sub">cap ' + t.capacity + ' · ' + (t.route.length >= 2 ? 'routed' : 'idle') + '</div>' +
+        '<div class="fc-sub">@ ' + where + '</div>';
+      chip.addEventListener('click', function () {
+        if (ui.selectedTrain !== t.id) {
+          ui.selectedTrain = t.id;
+          ui.editingRoute = false;   // don't carry a half-built draft between trains
+          ui.routeDraft = [];
+        }
+        renderAll();
+      });
+      roster.appendChild(chip);
+    });
+    sec.appendChild(roster);
+    return sec;
+  }
+
+  function buildBuySection() {
+    var sec = document.createElement('div');
+    sec.className = 'section';
+    sec.innerHTML = '<p class="section-heading">Buy a Train</p>' +
+      '<div class="notice-box" style="margin-bottom:10px;">Another train means another route running at once — but adds monthly maintenance. New stock unlocks as reputation grows.</div>';
+
+    TRAIN_TYPES.forEach(function (type) {
+      var repOk = state.reputation >= type.minRep;
+      var affordable = state.cash >= type.cost;
+
+      var row = document.createElement('div');
+      row.className = 'segment-row' + (repOk ? '' : ' unavailable');
+
+      var main = document.createElement('div');
+      main.className = 'seg-main';
+      main.innerHTML =
+        '<p class="seg-names">' + type.name + ' <span class="seg-link">' + fmtMoney(type.cost) + '</span></p>' +
+        '<p class="seg-sub">' + (repOk
+          ? 'Cap ' + type.capacity + ' · ' + type.speedLabel + ' · maint ' + fmtMoney(type.maintenance) + '/mo'
+          : 'Locked — needs reputation ' + type.minRep) + '</p>';
+      row.appendChild(main);
+
+      var status = document.createElement('div');
+      status.className = 'seg-status';
+      if (!repOk) {
+        status.innerHTML = '<span class="badge locked-cost">Rep ' + type.minRep + '</span>';
+      } else {
+        var buyBtn = document.createElement('button');
+        buyBtn.className = 'btn small primary';
+        buyBtn.textContent = 'Buy';
+        buyBtn.disabled = !affordable;
+        buyBtn.addEventListener('click', function () { buyTrain(type.id); });
+        status.appendChild(buyBtn);
+      }
+      row.appendChild(status);
+      sec.appendChild(row);
+    });
+    return sec;
   }
 
   function renderBuildView() {

@@ -57,9 +57,25 @@
   var SPAWN_MAX_PER_STATION = 2;
   var BASE_FARE_PER_HOP = 8;
   var HILL_FARE_MULTIPLIER = 2;
-  var MAINTENANCE_PER_TRAIN = 60;
+  var MAINTENANCE_PER_TRAIN = 60; // starter/legacy fallback; each train carries its own now
   var STAFF_BASE = 120;
   var STAFF_PER_EXTRA_STATION = 15;
+
+  // Buyable stock (GDD §6). Availability is gated by reputation so the fleet
+  // grows as the authority earns its stripes — electrification is out of scope
+  // (§11), so "electric" here is just flavour + capacity, not a track system.
+  var TRAIN_TYPES = [
+    { id: 'refurb-diesel', name: 'Refurbished Diesel',    capacity: 6,  speedLabel: 'Medium', cost: 3500,  maintenance: 90,  minRep: 40, flavor: 'Tidied-up branch-line diesel. Honest work.' },
+    { id: 'emu',           name: 'Electric Multiple Unit', capacity: 8,  speedLabel: 'Fast',   cost: 6500,  maintenance: 130, minRep: 55, flavor: 'Clean, quick, quietly modern.' },
+    { id: 'metro-car',     name: 'Modern Metro Car',       capacity: 10, speedLabel: 'Fast',   cost: 11000, maintenance: 180, minRep: 75, flavor: 'Big-capacity mainline stock. The future.' }
+  ];
+
+  function trainTypeById(id) {
+    for (var i = 0; i < TRAIN_TYPES.length; i++) {
+      if (TRAIN_TYPES[i].id === id) return TRAIN_TYPES[i];
+    }
+    return null;
+  }
 
   function defaultState() {
     var unlocked = {};
@@ -84,8 +100,9 @@
       nextGroupId: 1,
       monthlyRevenue: 0,
       seeded: false,
+      nextTrainId: 2,
       trains: [
-        { id: 'old-betsy', name: 'Old Betsy', capacity: 4, speedLabel: 'Slow', flavor: '1950s diesel — rattles, but it runs.', route: [], posIndex: 0, dir: 1, atStation: 'central', manifest: [] }
+        { id: 'old-betsy', typeId: 'starter', name: 'Old Betsy', capacity: 4, speedLabel: 'Slow', maintenance: MAINTENANCE_PER_TRAIN, flavor: '1950s diesel — rattles, but it runs.', route: [], posIndex: 0, dir: 1, atStation: 'central', manifest: [] }
       ]
     };
   }
@@ -99,7 +116,25 @@
     return defaultState();
   }
 
-  var state = loadState();
+  // Backfill fields added after a save was first written, so games started
+  // before fleet expansion keep working (each train needs its own maintenance
+  // + typeId now, and the buy counter must exist).
+  function normalizeState(s) {
+    if (!s.trains || !s.trains.length) s.trains = defaultState().trains;
+    s.trains.forEach(function (t) {
+      if (!t.manifest) t.manifest = [];
+      if (!t.route) t.route = [];
+      if (typeof t.posIndex !== 'number') t.posIndex = 0;
+      if (typeof t.dir !== 'number') t.dir = 1;
+      if (!t.atStation) t.atStation = t.route[0] || 'central';
+      if (typeof t.maintenance !== 'number') t.maintenance = MAINTENANCE_PER_TRAIN;
+      if (!t.typeId) t.typeId = 'starter';
+    });
+    if (typeof s.nextTrainId !== 'number') s.nextTrainId = s.trains.length + 1;
+    return s;
+  }
+
+  var state = normalizeState(loadState());
 
   function saveState() {
     try { localStorage.setItem(STATE_KEY, JSON.stringify(state)); } catch (e) {}
@@ -255,6 +290,39 @@
     return { ok: true, reason: null };
   }
 
+  // Mutating op. Returns { ok, reason, train }. reason is a user-facing string
+  // on failure (locked by rep, short on cash); on success the train is bought,
+  // parked at the first unlocked station with no route, and state saved.
+  function buyTrain(typeId) {
+    var type = trainTypeById(typeId);
+    if (!type) return { ok: false, reason: 'Unknown train type.', train: null };
+    if (state.reputation < type.minRep) {
+      return { ok: false, reason: type.name + ' needs reputation ' + type.minRep + ' (you have ' + state.reputation + ').', train: null };
+    }
+    if (state.cash < type.cost) {
+      return { ok: false, reason: 'Not enough cash. ' + type.name + ' costs $' + type.cost.toLocaleString('en-US') + '.', train: null };
+    }
+    state.cash -= type.cost;
+    var n = state.nextTrainId++;
+    var train = {
+      id: 'train-' + n,
+      typeId: type.id,
+      name: type.name + ' #' + n,
+      capacity: type.capacity,
+      speedLabel: type.speedLabel,
+      maintenance: type.maintenance,
+      flavor: type.flavor,
+      route: [],
+      posIndex: 0,
+      dir: 1,
+      atStation: unlockedStationIds()[0] || 'central',
+      manifest: []
+    };
+    state.trains.push(train);
+    saveState();
+    return { ok: true, reason: null, train: train };
+  }
+
   function loadGroupsAtStation(train, stationId) {
     var queue = state.queues[stationId];
     if (!queue) return;
@@ -313,7 +381,9 @@
   // calendar, and spawns next month's passengers. Returns a summary object for
   // the caller to display.
   function endMonth() {
-    var maintenance = state.trains.length * MAINTENANCE_PER_TRAIN;
+    var maintenance = state.trains.reduce(function (sum, t) {
+      return sum + (typeof t.maintenance === 'number' ? t.maintenance : MAINTENANCE_PER_TRAIN);
+    }, 0);
     var unlockedIds = unlockedStationIds();
     var unlockedCount = unlockedIds.length;
     var staff = STAFF_BASE + Math.max(0, unlockedCount - 2) * STAFF_PER_EXTRA_STATION;
@@ -372,12 +442,14 @@
     MAINTENANCE_PER_TRAIN: MAINTENANCE_PER_TRAIN,
     STAFF_BASE: STAFF_BASE,
     STAFF_PER_EXTRA_STATION: STAFF_PER_EXTRA_STATION,
+    TRAIN_TYPES: TRAIN_TYPES,
     // live state (stable reference)
     state: state,
     // pure helpers
     gx: gx,
     gy: gy,
     stationById: stationById,
+    trainTypeById: trainTypeById,
     connectionKey: connectionKey,
     findConnection: findConnection,
     isTrackBuilt: isTrackBuilt,
@@ -397,6 +469,7 @@
     spawnPassengers: spawnPassengers,
     unlockStation: unlockStation,
     buildTrack: buildTrack,
+    buyTrain: buyTrain,
     loadGroupsAtStation: loadGroupsAtStation,
     unloadGroupsAtStation: unloadGroupsAtStation,
     dispatchTrain: dispatchTrain,

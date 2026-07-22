@@ -1,6 +1,6 @@
 # Millhaven Transit Authority — Dev Log
 
-> **Current status:** Playable core loop, two UIs on a shared sim core. `game.js` holds all rules; `index.html` (desktop schematic map) and `mobile.html` (phone-first text UI) render it and share one save (`mta_save_v3`). No build step — open either HTML file. Next: fleet expansion (GDD §6), then seasonal demand (§8).
+> **Current status:** Playable core loop, two UIs on a shared sim core. `game.js` holds all rules; `index.html` (desktop schematic map) and `mobile.html` (phone-first text UI) render it and share one save (`mta_save_v3`). No build step — open either HTML file. Mobile is now feature-complete (persistent control board + multi-train fleet). Next: desktop fleet UI (still pinned to `trains[0]`), then seasonal demand (§8).
 
 ## Session 3 — 2026-07-22
 
@@ -9,6 +9,12 @@ Real-device pass on `mobile.html` (served via GitHub Pages off the feature branc
 
 - **Layout hardening for phones**: `viewport-fit=cover` so `env(safe-area-inset-*)` actually resolve; header padded past the notch/status bar (top) and rounded corners (sides); bottom nav extended to landscape side insets; `-webkit-tap-highlight-color: transparent`; `overscroll-behavior: none` to kill page rubber-band / pull-to-refresh.
 - **Persistent control board** (replaces the per-tab town mini-map): a dispatcher's mimic panel pinned between header and the scroll area, **visible on every tab**. Dark screen with scanline/vignette, glowing built-track lines vs faint dashed unbuilt conduit, station indicator lamps (lit = unlocked), per-station queue LEDs (green/amber/red by load), a pulsing train locator halo, and a mono status ticker (train position + next stop, station/track counts). Tapping any lamp jumps to that station's detail from any tab. Dropped the `map_background.png` photo underlay — the board is now a pure schematic. `renderControlBoard()` runs on every `renderAll()`; `prefers-reduced-motion` disables the blink/pulse.
+
+### Fleet expansion — GDD §6 (mobile now feature-complete)
+Buying and running multiple trains, done once in `game.js` so desktop can adopt it later too.
+- **Shared sim (`game.js`)**: `TRAIN_TYPES` catalog (Refurbished Diesel 6/med, EMU 8/fast, Modern Metro 10/fast) with per-type cost, maintenance, and a **reputation gate** (40/55/75) — electrification stays out of scope (§11), so "electric" is flavour + capacity, not a track system. New `buyTrain(typeId)` op returns `{ok,reason,train}`, parks the train at the first unlocked station, and assigns a unique id via `state.nextTrainId`. Each train now carries its own `maintenance`; `endMonth` **sums per-train maintenance** instead of `count × 60`. Added `normalizeState()` at load so **pre-fleet saves migrate** (backfills `maintenance`/`typeId`/`manifest`/`nextTrainId`) — a game started in Session 2 keeps working.
+- **Mobile Train tab**: now fleet-aware. A horizontal **fleet roster** (chips: name · cap · routed/idle · @station) picks which train the tab controls (`ui.selectedTrain`); switching trains clears any half-built route draft. Route edit/dispatch operate on the selected train. A **Buy a Train** section lists each type with specs/cost and a Buy button (disabled when short on cash, shown as rep-locked below its threshold). Delinted the last `trains[0]` render assumptions: the Stations-list "Train" badge and the station-detail Trains section now handle **any number of trains** at a station (badge shows `×N`; detail lists each with its own Dispatch/Set-route).
+- **Verified** headlessly: a Node sim harness (17 checks — buy gating, cash math, per-train maintenance, legacy-save migration) and a **jsdom UI smoke test** (17 checks — board renders 12 lamps + halos, buy grows the roster, train selection, multi-halo board, station detail lists both trains) both pass with no runtime errors. Harnesses live in the session scratchpad (`simtest.js`, `domtest.js`), not committed.
 
 ## Session 2 — 2026-07-15
 
