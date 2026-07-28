@@ -1,6 +1,15 @@
 # Millhaven Transit Authority — Dev Log
 
-> **Current status:** Playable core loop, two UIs on a shared sim core. `game.js` holds all rules; `index.html` (desktop schematic map) and `mobile.html` (phone-first text UI) render it and share one save (`mta_save_v3`). No build step — open either HTML file. Mobile is now feature-complete (persistent control board + multi-train fleet). Next: desktop fleet UI (still pinned to `trains[0]`), then seasonal demand (§8).
+> **Current status:** Playable core loop, two UIs on a shared sim core. `game.js` holds all rules; `index.html` (desktop schematic map) and `mobile.html` (phone-first text UI) render it and share one save (`mta_save_v3`). No build step — open either HTML file. **Both UIs are now fleet-complete** — buy/select/route multiple trains on desktop and mobile. Next: seasonal demand (§8), then polish (wait-time → happiness, subsidies §7).
+
+## Session 4 — 2026-07-28
+
+### Desktop fleet UI — GDD §6 (desktop now feature-parity with mobile)
+Generalized `index.html` off its last `state.trains[0]` assumptions so the desktop map plays the same multi-train game the mobile UI already did. No sim changes — `game.js` already had `buyTrain`, per-train maintenance, and fleet-aware `dispatchTrain`; this was pure render/UI work.
+- **Selected-train model**: added `getSelectedTrain()` / `selectTrain()` backed by a persisted `state.selectedTrainId` (falls back to the first train if missing/stale), so the panel's focus and an in-progress route edit survive a reload. Route editing (`setRouteEditMode`, `saveRouteDraft`, `cancelRouteEdit`, the banner) now all operate on the selected train instead of `trains[0]`.
+- **Pinned Fleet panel, now fleet-aware**: a horizontal **roster** of train chips (name · cap · routed/idle · @station) appears once you own more than one train; tapping one focuses it (and abandons any half-built route draft, matching mobile). Below the selected train's card + route + Dispatch sits a **Buy a Train** section listing each `TRAIN_TYPES` entry with specs/cost — a Buy button (disabled when short on cash) or a rep-lock badge below its reputation threshold. Buying focuses the new train.
+- **Station panel + map delint**: the station "Train / Dispatch" section lists **every** train present at that station (each with its own Set/Edit-route + Dispatch), plus a note for any train passing through on its route. On the map, trains sharing a station **stack vertically** instead of overlapping, and the selected train's icon is **ringed** in red.
+- **Verified** headlessly: a jsdom smoke test drives the real `index.html` (26 checks — load with no errors, buy gating by cash/rep, roster grows + selection, route edit lands on the *selected* train while Old Betsy's route stays empty, station panel lists both trains with only the routed one dispatchable, two ringed/stacked train icons). Harness lives in the session scratchpad (`desktoptest.js`), not committed.
 
 ## Session 3 — 2026-07-22
 
