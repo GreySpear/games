@@ -536,6 +536,15 @@
     font-weight: 700;
   }
 
+  .queue-item.unhappy {
+    border: 1px solid var(--warn-red);
+  }
+
+  .queue-item.unhappy .queue-wait {
+    color: #d9736c;
+    font-weight: 700;
+  }
+
   .fleet-header {
     display: flex;
     align-items: center;
@@ -1157,6 +1166,14 @@
     return '';
   }
 
+  // Underserved districts (GDD §7) earn a monthly, reputation-scaled subsidy
+  // for serving them — flag it so the player knows these routes pay off socially.
+  function subsidyNote(s) {
+    if (MTA.UNDERSERVED_DISTRICT_STATIONS.indexOf(s.id) === -1) return '';
+    var perStation = MTA.subsidyPerStation();
+    return '<p class="station-desc" style="margin-top:8px;color:var(--amber);font-weight:600;">&#9733; Underserved district — serving it earns a ~$' + perStation.toLocaleString('en-US') + '/mo government subsidy.</p>';
+  }
+
   function renderPanel() {
     var emptyMsg = document.getElementById('panel-empty-msg');
     var content = document.getElementById('panel-content');
@@ -1182,6 +1199,7 @@
         '</span>' +
         '<p class="station-desc" style="margin-top:10px;">' + s.character + '</p>' +
         seasonalNote(s) +
+        subsidyNote(s) +
       '</div>' +
       (unlocked ? '' : '<div class="panel-section"><div id="unlock-section"></div></div>') +
       '<div class="panel-section">' +
@@ -1247,8 +1265,9 @@
       listHtml = '<div class="queue-list">' + sorted.map(function (g) {
         var dest = stationById(g.destination);
         var wait = Math.max(0, nowAbs - g.spawnMonth);
-        return '<div class="queue-item">' +
-          '<span class="queue-dest">' + dest.name + '<br><span class="queue-wait">' + wait + ' mo wait</span></span>' +
+        var unhappy = MTA.isGroupUnhappy(g);
+        return '<div class="queue-item' + (unhappy ? ' unhappy' : '') + '">' +
+          '<span class="queue-dest">' + dest.name + '<br><span class="queue-wait">' + wait + ' mo wait' + (unhappy ? ' · unhappy' : '') + '</span></span>' +
           '<span class="queue-fare">$' + g.fare + '</span>' +
           '</div>';
       }).join('') + '</div>';
@@ -1331,12 +1350,21 @@
   function showMonthlySummary(summary) {
     var body = document.getElementById('summary-body');
     var sign = summary.net >= 0 ? '+' : '−';
+    var subsidyRow = summary.subsidy > 0
+      ? '<div class="summary-row"><span>Govt. subsidy (' + summary.subsidyStations + ' district' + (summary.subsidyStations === 1 ? '' : 's') + ')</span><span class="summary-pos">+$' + summary.subsidy.toLocaleString('en-US') + '</span></div>'
+      : '';
+    var happinessRow = (summary.unhappyGroups > 0 || summary.abandonedGroups > 0)
+      ? '<div class="summary-row"><span>Unhappy passengers</span><span class="summary-neg">' + summary.unhappyGroups +
+          (summary.abandonedGroups > 0 ? ' (' + summary.abandonedGroups + ' left)' : '') + '</span></div>'
+      : '';
     body.innerHTML =
       '<p class="train-name" style="margin-bottom:14px;">' + summary.label + '</p>' +
       '<div class="summary-row"><span>Fares collected</span><span class="summary-pos">+$' + summary.revenue.toLocaleString('en-US') + '</span></div>' +
+      subsidyRow +
       '<div class="summary-row"><span>Maintenance</span><span class="summary-neg">−$' + summary.maintenance.toLocaleString('en-US') + '</span></div>' +
       '<div class="summary-row"><span>Staff overhead</span><span class="summary-neg">−$' + summary.staff.toLocaleString('en-US') + '</span></div>' +
       '<div class="summary-row summary-net"><span>Net</span><span class="' + (summary.net >= 0 ? 'summary-pos' : 'summary-neg') + '">' + sign + '$' + Math.abs(summary.net).toLocaleString('en-US') + '</span></div>' +
+      happinessRow +
       '<div class="summary-row"><span>Reputation</span><span class="' + (summary.repDelta >= 0 ? 'summary-pos' : 'summary-neg') + '">' + (summary.repDelta >= 0 ? '+' : '') + summary.repDelta + '</span></div>' +
       '<div class="summary-row summary-balance"><span>Cash balance</span><span>$' + state.cash.toLocaleString('en-US') + '</span></div>' +
       '<button class="fleet-btn primary" id="summary-continue" style="width:100%;margin-top:14px;">Continue</button>';

@@ -498,6 +498,8 @@
   .queue-item .queue-dest { color: var(--off-white); font-weight: 600; }
   .queue-item .queue-wait { color: #9aa3bd; font-size: 10px; text-transform: uppercase; }
   .queue-item .queue-fare { color: var(--ok-green); font-family: var(--font-mono); font-weight: 700; }
+  .queue-item.unhappy { border-color: var(--warn-red); }
+  .queue-item.unhappy .queue-wait { color: #d9736c; font-weight: 700; }
 
   /* TRAIN VIEW */
   .train-name {
@@ -999,6 +1001,13 @@
     renderAll();
   }
 
+  // Flag underserved districts (GDD §7) that earn a reputation-scaled subsidy.
+  function subsidyNote(s) {
+    if (MTA.UNDERSERVED_DISTRICT_STATIONS.indexOf(s.id) === -1) return '';
+    var perStation = MTA.subsidyPerStation();
+    return '<p class="station-desc" style="margin-top:8px;color:var(--amber);font-weight:600;">&#9733; Underserved district — serving it earns a ~' + fmtMoney(perStation) + '/mo government subsidy.</p>';
+  }
+
   // One-line badge when the season shifts a station's demand (mirrors desktop).
   function seasonalNote(s) {
     var season = MTA.currentSeason();
@@ -1160,7 +1169,8 @@
       '<p class="station-meta">' + s.district + '</p>' +
       '<span class="lock-status ' + (unlocked ? 'unlocked' : 'locked') + '">' + (unlocked ? 'Unlocked' : 'Locked') + '</span>' +
       '<p class="station-desc">' + s.character + '</p>' +
-      seasonalNote(s);
+      seasonalNote(s) +
+      subsidyNote(s);
     view.appendChild(head);
 
     if (!unlocked) {
@@ -1215,8 +1225,9 @@
       listHtml = '<div class="queue-list">' + sorted.map(function (g) {
         var dest = stationById(g.destination);
         var wait = Math.max(0, nowAbs - g.spawnMonth);
-        return '<div class="queue-item">' +
-          '<span class="queue-dest">&rarr; ' + dest.name + '<br><span class="queue-wait">' + wait + ' mo wait</span></span>' +
+        var unhappy = MTA.isGroupUnhappy(g);
+        return '<div class="queue-item' + (unhappy ? ' unhappy' : '') + '">' +
+          '<span class="queue-dest">&rarr; ' + dest.name + '<br><span class="queue-wait">' + wait + ' mo wait' + (unhappy ? ' · unhappy' : '') + '</span></span>' +
           '<span class="queue-fare">$' + g.fare + '</span>' +
           '</div>';
       }).join('') + '</div>';
@@ -1651,12 +1662,21 @@
   function showMonthlySummary(summary) {
     var body = document.getElementById('summary-body');
     var sign = summary.net >= 0 ? '+' : '−';
+    var subsidyRow = summary.subsidy > 0
+      ? '<div class="summary-row"><span>Govt. subsidy (' + summary.subsidyStations + ' district' + (summary.subsidyStations === 1 ? '' : 's') + ')</span><span class="summary-pos">+' + fmtMoney(summary.subsidy) + '</span></div>'
+      : '';
+    var happinessRow = (summary.unhappyGroups > 0 || summary.abandonedGroups > 0)
+      ? '<div class="summary-row"><span>Unhappy passengers</span><span class="summary-neg">' + summary.unhappyGroups +
+          (summary.abandonedGroups > 0 ? ' (' + summary.abandonedGroups + ' left)' : '') + '</span></div>'
+      : '';
     body.innerHTML =
       '<p class="train-name" style="margin-bottom:14px;">' + summary.label + '</p>' +
       '<div class="summary-row"><span>Fares collected</span><span class="summary-pos">+' + fmtMoney(summary.revenue) + '</span></div>' +
+      subsidyRow +
       '<div class="summary-row"><span>Maintenance</span><span class="summary-neg">−' + fmtMoney(summary.maintenance) + '</span></div>' +
       '<div class="summary-row"><span>Staff overhead</span><span class="summary-neg">−' + fmtMoney(summary.staff) + '</span></div>' +
       '<div class="summary-row summary-net"><span>Net</span><span class="' + (summary.net >= 0 ? 'summary-pos' : 'summary-neg') + '">' + sign + fmtMoney(Math.abs(summary.net)) + '</span></div>' +
+      happinessRow +
       '<div class="summary-row"><span>Reputation</span><span class="' + (summary.repDelta >= 0 ? 'summary-pos' : 'summary-neg') + '">' + (summary.repDelta >= 0 ? '+' : '') + summary.repDelta + '</span></div>' +
       '<div class="summary-row summary-balance"><span>Cash balance</span><span>' + fmtMoney(state.cash) + '</span></div>' +
       '<button class="btn primary" id="summary-continue" style="width:100%;margin-top:14px;">Continue</button>';
