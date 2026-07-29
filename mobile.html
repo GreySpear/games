@@ -999,8 +999,21 @@
     renderAll();
   }
 
+  // One-line badge when the season shifts a station's demand (mirrors desktop).
+  function seasonalNote(s) {
+    var season = MTA.currentSeason();
+    var f = MTA.seasonalDemandFactor(s, season.id);
+    if (f > 1.05) {
+      return '<p class="station-desc" style="margin-top:8px;color:var(--ok-green);font-weight:600;">&#9650; Busier than usual this ' + season.label.toLowerCase() + '.</p>';
+    }
+    if (f < 0.95) {
+      return '<p class="station-desc" style="margin-top:8px;color:#d9736c;font-weight:600;">&#9660; Quieter than usual this ' + season.label.toLowerCase() + '.</p>';
+    }
+    return '';
+  }
+
   function renderHeader() {
-    document.getElementById('stat-date').textContent = MONTH_NAMES[state.month - 1] + ' ' + state.year;
+    document.getElementById('stat-date').textContent = MONTH_NAMES[state.month - 1] + ' ' + state.year + ' · ' + MTA.currentSeason().label;
     document.getElementById('stat-cash').textContent = fmtMoney(state.cash);
     document.getElementById('stat-rep').textContent = state.reputation;
   }
@@ -1146,7 +1159,8 @@
       '<p class="station-title">' + s.num + ' — ' + s.name + '</p>' +
       '<p class="station-meta">' + s.district + '</p>' +
       '<span class="lock-status ' + (unlocked ? 'unlocked' : 'locked') + '">' + (unlocked ? 'Unlocked' : 'Locked') + '</span>' +
-      '<p class="station-desc">' + s.character + '</p>';
+      '<p class="station-desc">' + s.character + '</p>' +
+      seasonalNote(s);
     view.appendChild(head);
 
     if (!unlocked) {

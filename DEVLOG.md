@@ -1,8 +1,16 @@
 # Millhaven Transit Authority — Dev Log
 
-> **Current status:** Playable core loop, two UIs on a shared sim core. `game.js` holds all rules; `index.html` (desktop schematic map) and `mobile.html` (phone-first text UI) render it and share one save (`mta_save_v3`). No build step — open either HTML file. **Both UIs are now fleet-complete** — buy/select/route multiple trains on desktop and mobile. Next: seasonal demand (§8), then polish (wait-time → happiness, subsidies §7).
+> **Current status:** Playable core loop, two UIs on a shared sim core. `game.js` holds all rules; `index.html` (desktop schematic map) and `mobile.html` (phone-first text UI) render it and share one save (`mta_save_v3`). No build step — open either HTML file. **Both UIs are fleet-complete** (buy/select/route multiple trains) and **seasonal demand (§8) is live** — summer quiets University, winter spikes suburbs. Next: polish (wait-time → happiness, subsidies §7).
 
 ## Session 4 — 2026-07-28
+
+### Seasonal demand curves — GDD §8
+Demand now shifts with the calendar, driven entirely in `game.js`'s `spawnPassengers` (both UIs picked it up for free).
+- **Seasons**: `seasonForMonth()` maps the month to Winter (Dec–Feb) / Spring (Mar–May) / Summer (Jun–Aug) / Autumn (Sep–Nov); `currentSeason()` reads `state.month`. Both exposed on `MTA`.
+- **Per-district multipliers** (`seasonalDemandFactor`): University Quarter ×0.3 in summer (students gone — the §8 case + station character); suburbs (North/East/South) ×1.6 in winter, ×0.85 in summer (§8 commuter spike); Heritage/Tourism (Old Town) ×1.4 in summer, ×0.9 otherwise (leisure character). Everything else stays ×1.0.
+- **Spawn math preserves the baseline**: draw the same 0–2 uniform as before, scale by the factor, then probabilistically round. `factor === 1` reproduces the old draw **exactly**, so non-seasonal stations/seasons are unchanged; a winter suburb can now spike past the old 2/month cap.
+- **Surfaced in both UIs**: header date now reads e.g. `Jul 1962 · Summer`, and a station's detail shows a green "Busier than usual this summer" / red "Quieter than usual this winter" badge when its factor ≠ 1.
+- **Verified**: a headless sim test (`seasontest.js`, 20 checks — season mapping, every factor value, and statistical spawn means over 8k trials confirming summer University ≈0.3, winter suburbs >1.35 and able to exceed 2, and Central's mean pinned at ~1.0 across seasons). Desktop jsdom smoke test (26 checks) and a mobile load check still green. Harnesses in the session scratchpad, not committed.
 
 ### Desktop fleet UI — GDD §6 (desktop now feature-parity with mobile)
 Generalized `index.html` off its last `state.trains[0]` assumptions so the desktop map plays the same multi-train game the mobile UI already did. No sim changes — `game.js` already had `buyTrain`, per-train maintenance, and fleet-aware `dispatchTrain`; this was pure render/UI work.

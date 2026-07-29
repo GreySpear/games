@@ -210,12 +210,60 @@
     return STATIONS.filter(function (s) { return !!state.unlocked[s.id]; }).map(function (s) { return s.id; });
   }
 
+  // --- Seasons (GDD §8) ---------------------------------------------------
+  // Northern-hemisphere calendar seasons keyed off the current month.
+  var SEASONS = [
+    { id: 'winter', label: 'Winter' },
+    { id: 'spring', label: 'Spring' },
+    { id: 'summer', label: 'Summer' },
+    { id: 'autumn', label: 'Autumn' }
+  ];
+
+  function seasonForMonth(month) {
+    // Dec/Jan/Feb winter, Mar–May spring, Jun–Aug summer, Sep–Nov autumn.
+    if (month === 12 || month === 1 || month === 2) return SEASONS[0];
+    if (month >= 3 && month <= 5) return SEASONS[1];
+    if (month >= 6 && month <= 8) return SEASONS[2];
+    return SEASONS[3];
+  }
+
+  function currentSeason() { return seasonForMonth(state.month); }
+
+  // Per-station multiplier on baseline demand for a given season. 1.0 leaves the
+  // baseline spawn distribution untouched; the seasonal cases are the two called
+  // out in §8 (University Quarter quiet in summer, suburbs spike in winter) plus
+  // a modest heritage/tourism summer bump (Old Town's leisure character).
+  function seasonalDemandFactor(station, seasonId) {
+    var d = station.district;
+    if (d === 'University Quarter') {
+      return seasonId === 'summer' ? 0.3 : 1.0;
+    }
+    if (d === 'Suburb North' || d === 'Suburb East' || d === 'Suburb South') {
+      if (seasonId === 'winter') return 1.6;
+      if (seasonId === 'summer') return 0.85;
+      return 1.0;
+    }
+    if (d === 'Heritage/Tourism') {
+      return seasonId === 'summer' ? 1.4 : 0.9;
+    }
+    return 1.0;
+  }
+
   function spawnPassengers() {
     var ids = unlockedStationIds();
     if (ids.length < 2) return;
+    var seasonId = currentSeason().id;
     ids.forEach(function (originId) {
       var queue = state.queues[originId];
-      var spawnCount = Math.floor(Math.random() * (SPAWN_MAX_PER_STATION + 1));
+      var station = stationById(originId);
+      var factor = seasonalDemandFactor(station, seasonId);
+      // Draw the baseline 0..2, then scale by the seasonal factor with
+      // probabilistic rounding. factor === 1 leaves the draw exactly as-is, so
+      // non-seasonal stations behave identically to before.
+      var base = Math.floor(Math.random() * (SPAWN_MAX_PER_STATION + 1));
+      var scaled = base * factor;
+      var spawnCount = Math.floor(scaled);
+      if (Math.random() < scaled - spawnCount) spawnCount += 1;
       for (var i = 0; i < spawnCount; i++) {
         if (queue.length >= QUEUE_MAX_PER_STATION) break;
         var others = ids.filter(function (id) { return id !== originId; });
@@ -457,6 +505,9 @@
     hopDistance: hopDistance,
     computeFare: computeFare,
     unlockedStationIds: unlockedStationIds,
+    seasonForMonth: seasonForMonth,
+    currentSeason: currentSeason,
+    seasonalDemandFactor: seasonalDemandFactor,
     sortQueueEntries: sortQueueEntries,
     hasUnlockedNeighbor: hasUnlockedNeighbor,
     checkUnlockRequirements: checkUnlockRequirements,
