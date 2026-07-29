@@ -61,6 +61,12 @@
   var STAFF_BASE = 120;
   var STAFF_PER_EXTRA_STATION = 15;
 
+  // Maintenance scales with age (GDD §7): a train's monthly upkeep climbs by
+  // AGING_RATE_PER_YEAR of its base cost for each full year in service, up to
+  // AGING_MAX_MULTIPLIER — pressure to modernise the fleet over a long game.
+  var AGING_RATE_PER_YEAR = 0.08;
+  var AGING_MAX_MULTIPLIER = 2.0;
+
   // Passenger happiness (GDD §4). A group turns unhappy once it has waited past
   // the patience threshold, which starts forgiving and tightens as the network
   // grows. Unhappy groups cost reputation; groups that wait ABANDON_GRACE months
@@ -119,7 +125,7 @@
       seeded: false,
       nextTrainId: 2,
       trains: [
-        { id: 'old-betsy', typeId: 'starter', name: 'Old Betsy', capacity: 4, speedLabel: 'Slow', maintenance: MAINTENANCE_PER_TRAIN, flavor: '1950s diesel — rattles, but it runs.', route: [], posIndex: 0, dir: 1, atStation: 'central', manifest: [] }
+        { id: 'old-betsy', typeId: 'starter', name: 'Old Betsy', capacity: 4, speedLabel: 'Slow', maintenance: MAINTENANCE_PER_TRAIN, flavor: '1950s diesel — rattles, but it runs.', route: [], posIndex: 0, dir: 1, atStation: 'central', manifest: [], acquiredAbs: 1962 * 12 + 1 }
       ]
     };
   }
@@ -146,6 +152,7 @@
       if (!t.atStation) t.atStation = t.route[0] || 'central';
       if (typeof t.maintenance !== 'number') t.maintenance = MAINTENANCE_PER_TRAIN;
       if (!t.typeId) t.typeId = 'starter';
+      if (typeof t.acquiredAbs !== 'number') t.acquiredAbs = s.year * 12 + s.month;
     });
     if (typeof s.nextTrainId !== 'number') s.nextTrainId = s.trains.length + 1;
     if (!s.servedThisMonth) s.servedThisMonth = {};
@@ -333,6 +340,21 @@
     return Math.round(SUBSIDY_BASE + state.reputation * SUBSIDY_PER_REP);
   }
 
+  // Whole months / years a train has been in service.
+  function trainAgeMonths(train) {
+    var acquired = (typeof train.acquiredAbs === 'number') ? train.acquiredAbs : (state.year * 12 + state.month);
+    return Math.max(0, (state.year * 12 + state.month) - acquired);
+  }
+
+  // A train's current monthly maintenance, its base cost scaled up by age
+  // (GDD §7). Age 0 == base; capped at AGING_MAX_MULTIPLIER.
+  function effectiveMaintenance(train) {
+    var base = (typeof train.maintenance === 'number') ? train.maintenance : MAINTENANCE_PER_TRAIN;
+    var years = Math.floor(trainAgeMonths(train) / 12);
+    var mult = Math.min(AGING_MAX_MULTIPLIER, 1 + AGING_RATE_PER_YEAR * years);
+    return Math.round(base * mult);
+  }
+
   function hasUnlockedNeighbor(stationId) {
     var adj = getAdjacency()[stationId] || [];
     for (var i = 0; i < adj.length; i++) {
@@ -405,7 +427,8 @@
       posIndex: 0,
       dir: 1,
       atStation: unlockedStationIds()[0] || 'central',
-      manifest: []
+      manifest: [],
+      acquiredAbs: state.year * 12 + state.month
     };
     state.trains.push(train);
     saveState();
@@ -473,7 +496,7 @@
   // the caller to display.
   function endMonth() {
     var maintenance = state.trains.reduce(function (sum, t) {
-      return sum + (typeof t.maintenance === 'number' ? t.maintenance : MAINTENANCE_PER_TRAIN);
+      return sum + effectiveMaintenance(t);
     }, 0);
     var unlockedIds = unlockedStationIds();
     var unlockedCount = unlockedIds.length;
@@ -586,6 +609,8 @@
     patienceThreshold: patienceThreshold,
     isGroupUnhappy: isGroupUnhappy,
     subsidyPerStation: subsidyPerStation,
+    trainAgeMonths: trainAgeMonths,
+    effectiveMaintenance: effectiveMaintenance,
     sortQueueEntries: sortQueueEntries,
     hasUnlockedNeighbor: hasUnlockedNeighbor,
     checkUnlockRequirements: checkUnlockRequirements,

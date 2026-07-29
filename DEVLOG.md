@@ -1,8 +1,17 @@
 # Millhaven Transit Authority — Dev Log
 
-> **Current status:** Playable core loop, two UIs on a shared sim core. `game.js` holds all rules; `index.html` (desktop schematic map) and `mobile.html` (phone-first text UI) render it and share one save (`mta_save_v3`). No build step — open either HTML file. **Both UIs are fleet-complete** (buy/select/route multiple trains); **seasonal demand (§8)**, **wait-time happiness (§4)**, and **government subsidies (§7)** are all live. The GDD's core systems are now implemented — remaining work is balance/content, not missing mechanics.
+> **Current status:** Playable core loop, two UIs on a shared sim core. `game.js` holds all rules; `index.html` (desktop schematic map) and `mobile.html` (phone-first text UI) render it and share one save (`mta_save_v3`). No build step — open either HTML file. **Both UIs are fleet-complete** (buy/select/route multiple trains); **seasonal demand (§8)**, **wait-time happiness (§4)**, **government subsidies (§7)**, and **age-scaling maintenance (§7)** are all live. Every core GDD system is now implemented — remaining work is balance/content, not missing mechanics.
 
 ## Session 4 — 2026-07-28
+
+### Age-scaling maintenance — GDD §7
+Train upkeep now climbs with age, closing the last "scales with age" gap in the finances section.
+- Each train records an `acquiredAbs` (absolute month it entered service; Old Betsy = the Jan 1962 start, bought trains = the month of purchase). `effectiveMaintenance(train)` scales base upkeep by `1 + 0.08·yearsInService`, capped at `2.0×`; `endMonth` now sums `effectiveMaintenance` instead of the flat per-train figure. Age is measured in whole years, so costs step up on each service anniversary.
+- `normalizeState` backfills `acquiredAbs` (to the save's current month) so pre-aging saves migrate cleanly and simply start aging from load; `effectiveMaintenance` also tolerates a missing field defensively.
+- Both fleet cards now show the **current** maintenance (`Maint $X/mo`) with an `(age Ny)` tag once a train has a full year on it, so the rising figure has a visible cause and old stock reads as a reason to modernise.
+- **Verified**: `agetest.js` (13 checks — start-at-base, per-year 8% steps, 2× cap, `endMonth` charging aged upkeep, independent per-train aging, missing-field tolerance) and `migrationtest.js` (5 — a hand-written legacy save loads and backfills `acquiredAbs`/`maintenance`/`servedThisMonth`). All prior suites (season 20, finance 24, desktop 26, mobile/UI) still green.
+
+### Passenger happiness + government subsidies — GDD §4 & §7
 
 ### Passenger happiness + government subsidies — GDD §4 & §7
 Two economy systems, both in `game.js`'s `endMonth`, so desktop and mobile share them.

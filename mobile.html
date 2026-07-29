@@ -1001,6 +1001,12 @@
     renderAll();
   }
 
+  // " (age Ny)" once a train has a full year in service (aging maintenance §7).
+  function trainAgeLabel(train) {
+    var years = Math.floor(MTA.trainAgeMonths(train) / 12);
+    return years > 0 ? ' (age ' + years + 'y)' : '';
+  }
+
   // Flag underserved districts (GDD §7) that earn a reputation-scaled subsidy.
   function subsidyNote(s) {
     if (MTA.UNDERSERVED_DISTRICT_STATIONS.indexOf(s.id) === -1) return '';
@@ -1400,6 +1406,7 @@
         '<span>Onboard <strong>' + train.manifest.length + '/' + train.capacity + ' groups</strong></span>' +
         '<span>Speed <strong>' + train.speedLabel + '</strong></span>' +
         '<span>At <strong>' + stationById(train.atStation).name + '</strong></span>' +
+        '<span>Maint <strong>' + fmtMoney(MTA.effectiveMaintenance(train)) + '/mo</strong>' + trainAgeLabel(train) + '</span>' +
       '</div>';
     view.appendChild(card);
 

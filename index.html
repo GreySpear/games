@@ -1376,6 +1376,13 @@
     document.getElementById('summary-overlay').classList.remove('visible');
   }
 
+  // " (age Ny)" once a train has a full year on it, so the rising maintenance
+  // in the specs has a visible cause.
+  function trainAgeLabel(train) {
+    var years = Math.floor(MTA.trainAgeMonths(train) / 12);
+    return years > 0 ? ' (age ' + years + 'y)' : '';
+  }
+
   function buySectionHtml() {
     var rows = MTA.TRAIN_TYPES.map(function (type) {
       var repOk = state.reputation >= type.minRep;
@@ -1443,6 +1450,7 @@
         '<span>Onboard <strong>' + selected.manifest.length + '/' + selected.capacity + ' groups</strong></span>' +
         '<span>Speed <strong>' + selected.speedLabel + '</strong></span>' +
         '<span>At <strong>' + stationById(selected.atStation).name + '</strong></span>' +
+        '<span>Maint <strong>$' + MTA.effectiveMaintenance(selected) + '/mo</strong>' + trainAgeLabel(selected) + '</span>' +
       '</div>' +
       '<p class="section-heading">Route</p>' +
       '<div class="route-chips">' + chipsHtml + '</div>' +
