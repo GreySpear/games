@@ -155,6 +155,11 @@
     stroke-width: 2;
   }
 
+  .train-icon.selected rect {
+    stroke: var(--warn-red);
+    stroke-width: 3;
+  }
+
   .station-node {
     cursor: pointer;
   }
@@ -531,6 +536,15 @@
     font-weight: 700;
   }
 
+  .queue-item.unhappy {
+    border: 1px solid var(--warn-red);
+  }
+
+  .queue-item.unhappy .queue-wait {
+    color: #d9736c;
+    font-weight: 700;
+  }
+
   .fleet-header {
     display: flex;
     align-items: center;
@@ -636,6 +650,92 @@
     cursor: not-allowed;
   }
 
+  /* FLEET ROSTER (pick which train the panel controls) */
+  .fleet-roster {
+    display: flex;
+    gap: 8px;
+    overflow-x: auto;
+    padding-bottom: 4px;
+    margin-bottom: 14px;
+  }
+
+  .fleet-chip {
+    flex: 0 0 auto;
+    min-width: 100px;
+    background: var(--navy);
+    border: 1px solid var(--line-grey);
+    border-radius: 6px;
+    padding: 8px 10px;
+    text-align: left;
+    color: var(--off-white);
+    cursor: pointer;
+    font-family: var(--font-ui);
+    line-height: 1.35;
+  }
+
+  .fleet-chip.active {
+    border-color: var(--amber);
+    background: rgba(232,163,61,0.08);
+  }
+
+  .fleet-chip .fc-name { font-size: 12px; font-weight: 700; }
+  .fleet-chip.active .fc-name { color: var(--amber); }
+  .fleet-chip .fc-sub {
+    font-size: 10px;
+    color: #9aa3bd;
+    font-family: var(--font-mono);
+  }
+
+  /* BUY A TRAIN */
+  .buy-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    background: var(--navy);
+    border: 1px solid var(--line-grey);
+    border-radius: 4px;
+    padding: 8px 10px;
+    margin-bottom: 6px;
+  }
+
+  .buy-row.locked { opacity: 0.55; }
+
+  .buy-main .buy-name {
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--off-white);
+  }
+
+  .buy-main .buy-sub {
+    font-size: 10px;
+    color: #9aa3bd;
+    font-family: var(--font-mono);
+    margin-top: 2px;
+  }
+
+  .buy-status { flex-shrink: 0; }
+
+  .buy-status .fleet-btn {
+    min-width: 0;
+    padding: 6px 10px;
+    min-height: 34px;
+    white-space: nowrap;
+  }
+
+  .buy-lock-badge {
+    display: inline-block;
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: #d9736c;
+    background: rgba(179,69,63,0.2);
+    border-radius: 3px;
+    padding: 4px 8px;
+    white-space: nowrap;
+  }
+
   /* Mobile layout: stack panel below map */
   @media (max-width: 720px) {
     main {
@@ -732,6 +832,48 @@
       saveState = MTA.saveState;
 
   var state = MTA.state;
+
+  // The fleet panel and route editing are focused on one train at a time.
+  // selectedTrainId is persisted alongside the rest of state so the focus (and
+  // an in-progress route edit) survive a reload; getSelectedTrain falls back to
+  // the first train if the id is missing/stale.
+  function getSelectedTrain() {
+    var id = state.selectedTrainId;
+    if (id) {
+      for (var i = 0; i < state.trains.length; i++) {
+        if (state.trains[i].id === id) return state.trains[i];
+      }
+    }
+    var t = state.trains[0] || null;
+    state.selectedTrainId = t ? t.id : null;
+    return t;
+  }
+
+  function selectTrain(id) {
+    if (state.selectedTrainId === id) return;
+    state.selectedTrainId = id;
+    if (state.routeEditMode) {
+      // switching trains abandons a half-built draft rather than applying it to
+      // a different train.
+      state.routeEditMode = false;
+      state.routeDraft = [];
+      updateModeBanner();
+    }
+    saveState();
+    renderMap();
+    renderFleetPinned();
+  }
+
+  function buyTrain(typeId) {
+    var res = MTA.buyTrain(typeId);
+    if (!res.ok) { if (res.reason) alert(res.reason); return; }
+    state.selectedTrainId = res.train.id; // focus the newly bought train
+    saveState();
+    renderMap();
+    renderHeader();
+    renderFleetPinned();
+    if (state.selected) renderPanel();
+  }
 
   var svgNS = 'http://www.w3.org/2000/svg';
 
@@ -832,13 +974,19 @@
       svg.appendChild(g);
     });
 
-    // trains
+    // trains — multiple can share a station, so stack them vertically and ring
+    // the one the fleet panel currently controls.
+    var selectedTrain = getSelectedTrain();
+    var selectedId = selectedTrain ? selectedTrain.id : null;
+    var stackAtStation = {};
     state.trains.forEach(function (train) {
       var s = stationById(train.atStation);
       if (!s) return;
-      var tg = el('g', { 'class': 'train-icon' });
+      var n = stackAtStation[train.atStation] || 0;
+      stackAtStation[train.atStation] = n + 1;
+      var tg = el('g', { 'class': 'train-icon' + (train.id === selectedId ? ' selected' : '') });
       var rect = el('rect', {
-        x: gx(s.col) - 22, y: gy(s.row) - 6,
+        x: gx(s.col) - 22, y: gy(s.row) - 6 + n * 15,
         width: 16, height: 12, rx: 3
       });
       tg.appendChild(rect);
@@ -890,7 +1038,7 @@
     state.routeEditMode = on;
     if (on) {
       state.buildMode = false;
-      state.routeDraft = state.trains[0].route.slice();
+      state.routeDraft = getSelectedTrain().route.slice();
     }
     saveState();
     renderMap();
@@ -929,12 +1077,12 @@
   }
 
   function cancelRouteEdit() {
-    state.routeDraft = state.trains[0].route.slice();
+    state.routeDraft = getSelectedTrain().route.slice();
     setRouteEditMode(false);
   }
 
   function saveRouteDraft() {
-    var train = state.trains[0];
+    var train = getSelectedTrain();
     if (state.routeDraft.length < 2) {
       alert('A route needs at least two stops. Tap another connected station on the map to add one.');
       return;
@@ -969,7 +1117,7 @@
     }
 
     if (state.routeEditMode) {
-      var train = state.trains[0];
+      var train = getSelectedTrain();
       var draft = state.routeDraft;
       var chipsHtml = draft.length === 0
         ? '<span class="route-empty">Tap a station on the map to start the route.</span>'
@@ -1004,6 +1152,28 @@
     banner.innerHTML = '';
   }
 
+  // A one-line badge when the current season shifts a station's demand, so the
+  // player can see why queues fill faster/slower some months.
+  function seasonalNote(s) {
+    var season = MTA.currentSeason();
+    var f = MTA.seasonalDemandFactor(s, season.id);
+    if (f > 1.05) {
+      return '<p class="station-desc" style="margin-top:8px;color:var(--ok-green);font-weight:600;">&#9650; Busier than usual this ' + season.label.toLowerCase() + '.</p>';
+    }
+    if (f < 0.95) {
+      return '<p class="station-desc" style="margin-top:8px;color:#d9736c;font-weight:600;">&#9660; Quieter than usual this ' + season.label.toLowerCase() + '.</p>';
+    }
+    return '';
+  }
+
+  // Underserved districts (GDD §7) earn a monthly, reputation-scaled subsidy
+  // for serving them — flag it so the player knows these routes pay off socially.
+  function subsidyNote(s) {
+    if (MTA.UNDERSERVED_DISTRICT_STATIONS.indexOf(s.id) === -1) return '';
+    var perStation = MTA.subsidyPerStation();
+    return '<p class="station-desc" style="margin-top:8px;color:var(--amber);font-weight:600;">&#9733; Underserved district — serving it earns a ~$' + perStation.toLocaleString('en-US') + '/mo government subsidy.</p>';
+  }
+
   function renderPanel() {
     var emptyMsg = document.getElementById('panel-empty-msg');
     var content = document.getElementById('panel-content');
@@ -1028,6 +1198,8 @@
           (unlocked ? 'Unlocked' : 'Locked') +
         '</span>' +
         '<p class="station-desc" style="margin-top:10px;">' + s.character + '</p>' +
+        seasonalNote(s) +
+        subsidyNote(s) +
       '</div>' +
       (unlocked ? '' : '<div class="panel-section"><div id="unlock-section"></div></div>') +
       '<div class="panel-section">' +
@@ -1093,8 +1265,9 @@
       listHtml = '<div class="queue-list">' + sorted.map(function (g) {
         var dest = stationById(g.destination);
         var wait = Math.max(0, nowAbs - g.spawnMonth);
-        return '<div class="queue-item">' +
-          '<span class="queue-dest">' + dest.name + '<br><span class="queue-wait">' + wait + ' mo wait</span></span>' +
+        var unhappy = MTA.isGroupUnhappy(g);
+        return '<div class="queue-item' + (unhappy ? ' unhappy' : '') + '">' +
+          '<span class="queue-dest">' + dest.name + '<br><span class="queue-wait">' + wait + ' mo wait' + (unhappy ? ' · unhappy' : '') + '</span></span>' +
           '<span class="queue-fare">$' + g.fare + '</span>' +
           '</div>';
       }).join('') + '</div>';
@@ -1111,46 +1284,57 @@
     }
   }
 
+  // Route the fleet panel's focus to a specific train, then open route editing
+  // for it (used by the per-train buttons in the station panel).
+  function editTrainRoute(trainId) {
+    state.selectedTrainId = trainId;
+    setRouteEditMode(true);
+  }
+
   function renderTrainSection(stationId) {
     var container = document.getElementById('train-section');
     if (!container) return;
-    var train = state.trains[0];
-    var hereNow = train.atStation === stationId;
-    var onRoute = train.route.indexOf(stationId) !== -1;
-    var hasRoute = train.route.length >= 2;
 
-    if (hereNow && hasRoute) {
-      container.innerHTML =
+    var here = state.trains.filter(function (t) { return t.atStation === stationId; });
+    var passing = state.trains.filter(function (t) {
+      return t.atStation !== stationId && t.route.indexOf(stationId) !== -1;
+    });
+
+    if (here.length === 0 && passing.length === 0) {
+      container.innerHTML = '<div class="placeholder-box">No train assigned to this station. Manage routes from the <strong>Fleet</strong> panel above.</div>';
+      return;
+    }
+
+    var html = '';
+    here.forEach(function (train) {
+      var hasRoute = train.route.length >= 2;
+      html +=
         '<div class="placeholder-box" style="border-style:solid;color:var(--off-white);margin-bottom:8px;">' +
-          '<strong style="color:var(--amber);">' + train.name + '</strong> is here. Onboard ' + train.manifest.length + '/' + train.capacity + '.' +
+          '<strong style="color:var(--amber);">' + train.name + '</strong> is here. ' +
+          (hasRoute ? 'Onboard ' + train.manifest.length + '/' + train.capacity + '.' : 'No route yet.') +
         '</div>' +
-        '<div class="fleet-btn-row">' +
-          '<button class="fleet-btn" id="panel-edit-route">Edit Route</button>' +
-          '<button class="fleet-btn primary" id="panel-dispatch">Dispatch</button>' +
+        '<div class="fleet-btn-row" style="margin-bottom:12px;">' +
+          '<button class="fleet-btn train-edit-btn" data-train="' + train.id + '">' + (hasRoute ? 'Edit Route' : 'Set Route') + '</button>' +
+          (hasRoute ? '<button class="fleet-btn primary train-dispatch-btn" data-train="' + train.id + '">Dispatch</button>' : '') +
         '</div>';
-      document.getElementById('panel-edit-route').addEventListener('click', function () { setRouteEditMode(true); });
-      document.getElementById('panel-dispatch').addEventListener('click', function () { dispatchTrain(train.id); });
-      return;
-    }
+    });
+    passing.forEach(function (train) {
+      html += '<div class="placeholder-box" style="margin-bottom:8px;">On ' + train.name + '\'s route. Currently at ' + stationById(train.atStation).name + '.</div>';
+    });
+    container.innerHTML = html;
 
-    if (hereNow) {
-      container.innerHTML =
-        '<div class="placeholder-box" style="margin-bottom:8px;">' + train.name + ' is stabled here. Give it a route to start running.</div>' +
-        '<div class="fleet-btn-row"><button class="fleet-btn primary" id="panel-edit-route">Set Route</button></div>';
-      document.getElementById('panel-edit-route').addEventListener('click', function () { setRouteEditMode(true); });
-      return;
+    var editBtns = container.querySelectorAll('.train-edit-btn');
+    for (var i = 0; i < editBtns.length; i++) {
+      editBtns[i].addEventListener('click', function () { editTrainRoute(this.getAttribute('data-train')); });
     }
-
-    if (onRoute) {
-      container.innerHTML = '<div class="placeholder-box">On ' + train.name + '\'s route. Currently at ' + stationById(train.atStation).name + '.</div>';
-      return;
+    var dispBtns = container.querySelectorAll('.train-dispatch-btn');
+    for (var j = 0; j < dispBtns.length; j++) {
+      dispBtns[j].addEventListener('click', function () { dispatchTrain(this.getAttribute('data-train')); });
     }
-
-    container.innerHTML = '<div class="placeholder-box">No train assigned to this station. Manage routes from the <strong>Fleet</strong> panel above.</div>';
   }
 
   function renderHeader() {
-    document.getElementById('stat-date').textContent = MONTH_NAMES[state.month - 1] + ' ' + state.year;
+    document.getElementById('stat-date').textContent = MONTH_NAMES[state.month - 1] + ' ' + state.year + ' · ' + MTA.currentSeason().label;
     document.getElementById('stat-cash').textContent = '$' + state.cash.toLocaleString('en-US');
     document.getElementById('stat-rep').textContent = state.reputation;
   }
@@ -1166,12 +1350,21 @@
   function showMonthlySummary(summary) {
     var body = document.getElementById('summary-body');
     var sign = summary.net >= 0 ? '+' : '−';
+    var subsidyRow = summary.subsidy > 0
+      ? '<div class="summary-row"><span>Govt. subsidy (' + summary.subsidyStations + ' district' + (summary.subsidyStations === 1 ? '' : 's') + ')</span><span class="summary-pos">+$' + summary.subsidy.toLocaleString('en-US') + '</span></div>'
+      : '';
+    var happinessRow = (summary.unhappyGroups > 0 || summary.abandonedGroups > 0)
+      ? '<div class="summary-row"><span>Unhappy passengers</span><span class="summary-neg">' + summary.unhappyGroups +
+          (summary.abandonedGroups > 0 ? ' (' + summary.abandonedGroups + ' left)' : '') + '</span></div>'
+      : '';
     body.innerHTML =
       '<p class="train-name" style="margin-bottom:14px;">' + summary.label + '</p>' +
       '<div class="summary-row"><span>Fares collected</span><span class="summary-pos">+$' + summary.revenue.toLocaleString('en-US') + '</span></div>' +
+      subsidyRow +
       '<div class="summary-row"><span>Maintenance</span><span class="summary-neg">−$' + summary.maintenance.toLocaleString('en-US') + '</span></div>' +
       '<div class="summary-row"><span>Staff overhead</span><span class="summary-neg">−$' + summary.staff.toLocaleString('en-US') + '</span></div>' +
       '<div class="summary-row summary-net"><span>Net</span><span class="' + (summary.net >= 0 ? 'summary-pos' : 'summary-neg') + '">' + sign + '$' + Math.abs(summary.net).toLocaleString('en-US') + '</span></div>' +
+      happinessRow +
       '<div class="summary-row"><span>Reputation</span><span class="' + (summary.repDelta >= 0 ? 'summary-pos' : 'summary-neg') + '">' + (summary.repDelta >= 0 ? '+' : '') + summary.repDelta + '</span></div>' +
       '<div class="summary-row summary-balance"><span>Cash balance</span><span>$' + state.cash.toLocaleString('en-US') + '</span></div>' +
       '<button class="fleet-btn primary" id="summary-continue" style="width:100%;margin-top:14px;">Continue</button>';
@@ -1183,49 +1376,101 @@
     document.getElementById('summary-overlay').classList.remove('visible');
   }
 
+  // " (age Ny)" once a train has a full year on it, so the rising maintenance
+  // in the specs has a visible cause.
+  function trainAgeLabel(train) {
+    var years = Math.floor(MTA.trainAgeMonths(train) / 12);
+    return years > 0 ? ' (age ' + years + 'y)' : '';
+  }
+
+  function buySectionHtml() {
+    var rows = MTA.TRAIN_TYPES.map(function (type) {
+      var repOk = state.reputation >= type.minRep;
+      var affordable = state.cash >= type.cost;
+      var sub = repOk
+        ? 'Cap ' + type.capacity + ' · ' + type.speedLabel + ' · maint $' + type.maintenance + '/mo'
+        : 'Locked — needs reputation ' + type.minRep;
+      var right = repOk
+        ? '<button class="fleet-btn primary buy-btn" data-type="' + type.id + '"' + (affordable ? '' : ' disabled') + '>Buy $' + type.cost.toLocaleString('en-US') + '</button>'
+        : '<span class="buy-lock-badge">Rep ' + type.minRep + '</span>';
+      return '<div class="buy-row' + (repOk ? '' : ' locked') + '">' +
+          '<div class="buy-main"><div class="buy-name">' + type.name + '</div><div class="buy-sub">' + sub + '</div></div>' +
+          '<div class="buy-status">' + right + '</div>' +
+        '</div>';
+    }).join('');
+    return '<p class="section-heading" style="margin-top:18px;">Buy a Train</p>' +
+      '<p class="station-desc" style="font-size:11px;margin:-4px 0 10px;color:#9aa3bd;">Another train runs another route at once — but adds monthly maintenance. New stock unlocks as reputation grows.</p>' +
+      rows;
+  }
+
   function renderFleetPinned() {
     var container = document.getElementById('panel-fleet-pinned');
     if (!container) return;
 
+    var selected = getSelectedTrain();
+
     if (state.routeEditMode) {
-      container.innerHTML = '<p class="section-heading">Fleet</p><div class="placeholder-box">Editing route on the map above.</div>';
+      container.innerHTML = '<p class="section-heading">Fleet</p><div class="placeholder-box">Editing <strong>' + selected.name + '</strong>\'s route on the map above.</div>';
       return;
     }
 
-    var train = state.trains[0];
+    // Roster: pick which train the panel controls (only worth showing when >1).
+    var rosterHtml = '';
+    if (state.trains.length > 1) {
+      rosterHtml = '<div class="fleet-roster">' + state.trains.map(function (t) {
+        var where = stationById(t.atStation) ? stationById(t.atStation).name : '—';
+        return '<button class="fleet-chip' + (t.id === selected.id ? ' active' : '') + '" data-train="' + t.id + '">' +
+            '<div class="fc-name">' + t.name + '</div>' +
+            '<div class="fc-sub">cap ' + t.capacity + ' · ' + (t.route.length >= 2 ? 'routed' : 'idle') + '</div>' +
+            '<div class="fc-sub">@ ' + where + '</div>' +
+          '</button>';
+      }).join('') + '</div>';
+    }
+
     var chipsHtml = '';
-    if (train.route.length === 0) {
+    if (selected.route.length === 0) {
       chipsHtml = '<span class="route-empty">No stops yet.</span>';
     } else {
-      chipsHtml = train.route.map(function (id, idx) {
+      chipsHtml = selected.route.map(function (id, idx) {
         var st = stationById(id);
-        var isCurrent = train.posIndex === idx;
+        var isCurrent = selected.posIndex === idx;
         var chip = '<span class="route-chip' + (isCurrent ? ' current' : '') + '">' + st.name + '</span>';
-        if (idx < train.route.length - 1) chip += '<span class="route-arrow">&rarr;</span>';
+        if (idx < selected.route.length - 1) chip += '<span class="route-arrow">&rarr;</span>';
         return chip;
       }).join('');
     }
 
-    var canDispatch = train.route.length >= 2;
+    var canDispatch = selected.route.length >= 2;
 
     container.innerHTML =
-      '<p class="section-heading">Fleet</p>' +
-      '<p class="train-name">' + train.name + '</p>' +
+      '<p class="section-heading">Fleet (' + state.trains.length + ')</p>' +
+      rosterHtml +
+      '<p class="train-name">' + selected.name + '</p>' +
       '<div class="train-specs">' +
-        '<span>Onboard <strong>' + train.manifest.length + '/' + train.capacity + ' groups</strong></span>' +
-        '<span>Speed <strong>' + train.speedLabel + '</strong></span>' +
-        '<span>At <strong>' + stationById(train.atStation).name + '</strong></span>' +
+        '<span>Onboard <strong>' + selected.manifest.length + '/' + selected.capacity + ' groups</strong></span>' +
+        '<span>Speed <strong>' + selected.speedLabel + '</strong></span>' +
+        '<span>At <strong>' + stationById(selected.atStation).name + '</strong></span>' +
+        '<span>Maint <strong>$' + MTA.effectiveMaintenance(selected) + '/mo</strong>' + trainAgeLabel(selected) + '</span>' +
       '</div>' +
       '<p class="section-heading">Route</p>' +
       '<div class="route-chips">' + chipsHtml + '</div>' +
       '<div class="fleet-btn-row">' +
         '<button class="fleet-btn" id="pinned-edit-route">Edit Route</button>' +
         '<button class="fleet-btn primary" id="pinned-dispatch"' + (canDispatch ? '' : ' disabled') + '>Dispatch</button>' +
-      '</div>';
+      '</div>' +
+      buySectionHtml();
 
+    var chips = container.querySelectorAll('.fleet-chip');
+    for (var i = 0; i < chips.length; i++) {
+      chips[i].addEventListener('click', function () { selectTrain(this.getAttribute('data-train')); });
+    }
     document.getElementById('pinned-edit-route').addEventListener('click', function () { setRouteEditMode(true); });
     var dispatchBtn = document.getElementById('pinned-dispatch');
-    if (dispatchBtn) dispatchBtn.addEventListener('click', function () { dispatchTrain(train.id); });
+    if (dispatchBtn) dispatchBtn.addEventListener('click', function () { dispatchTrain(selected.id); });
+    var buyBtns = container.querySelectorAll('.buy-btn');
+    for (var j = 0; j < buyBtns.length; j++) {
+      buyBtns[j].addEventListener('click', function () { buyTrain(this.getAttribute('data-type')); });
+    }
   }
 
   document.getElementById('btn-end-month').addEventListener('click', endMonth);

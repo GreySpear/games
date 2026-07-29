@@ -61,6 +61,28 @@
   var STAFF_BASE = 120;
   var STAFF_PER_EXTRA_STATION = 15;
 
+  // Maintenance scales with age (GDD §7): a train's monthly upkeep climbs by
+  // AGING_RATE_PER_YEAR of its base cost for each full year in service, up to
+  // AGING_MAX_MULTIPLIER — pressure to modernise the fleet over a long game.
+  var AGING_RATE_PER_YEAR = 0.08;
+  var AGING_MAX_MULTIPLIER = 2.0;
+
+  // Passenger happiness (GDD §4). A group turns unhappy once it has waited past
+  // the patience threshold, which starts forgiving and tightens as the network
+  // grows. Unhappy groups cost reputation; groups that wait ABANDON_GRACE months
+  // beyond patience give up and leave the queue.
+  var BASE_PATIENCE = 6;
+  var MIN_PATIENCE = 2;
+  var PATIENCE_TIGHTEN_PER_STATION = 0.4;
+  var ABANDON_GRACE = 3;
+  var UNHAPPY_PER_REP_POINT = 3; // this many unhappy groups = -1 reputation
+
+  // Government subsidies (GDD §7). Serving these socially-useful, lower-profit
+  // districts earns a monthly bonus per served station, scaled by reputation.
+  var UNDERSERVED_DISTRICT_STATIONS = ['docks', 'foundry', 'newfield'];
+  var SUBSIDY_BASE = 20;
+  var SUBSIDY_PER_REP = 1.2;
+
   // Buyable stock (GDD §6). Availability is gated by reputation so the fleet
   // grows as the authority earns its stripes — electrification is out of scope
   // (§11), so "electric" here is just flavour + capacity, not a track system.
@@ -99,10 +121,11 @@
       queueSort: 'wait',
       nextGroupId: 1,
       monthlyRevenue: 0,
+      servedThisMonth: {},
       seeded: false,
       nextTrainId: 2,
       trains: [
-        { id: 'old-betsy', typeId: 'starter', name: 'Old Betsy', capacity: 4, speedLabel: 'Slow', maintenance: MAINTENANCE_PER_TRAIN, flavor: '1950s diesel — rattles, but it runs.', route: [], posIndex: 0, dir: 1, atStation: 'central', manifest: [] }
+        { id: 'old-betsy', typeId: 'starter', name: 'Old Betsy', capacity: 4, speedLabel: 'Slow', maintenance: MAINTENANCE_PER_TRAIN, flavor: '1950s diesel — rattles, but it runs.', route: [], posIndex: 0, dir: 1, atStation: 'central', manifest: [], acquiredAbs: 1962 * 12 + 1 }
       ]
     };
   }
@@ -129,8 +152,10 @@
       if (!t.atStation) t.atStation = t.route[0] || 'central';
       if (typeof t.maintenance !== 'number') t.maintenance = MAINTENANCE_PER_TRAIN;
       if (!t.typeId) t.typeId = 'starter';
+      if (typeof t.acquiredAbs !== 'number') t.acquiredAbs = s.year * 12 + s.month;
     });
     if (typeof s.nextTrainId !== 'number') s.nextTrainId = s.trains.length + 1;
+    if (!s.servedThisMonth) s.servedThisMonth = {};
     return s;
   }
 
@@ -210,12 +235,60 @@
     return STATIONS.filter(function (s) { return !!state.unlocked[s.id]; }).map(function (s) { return s.id; });
   }
 
+  // --- Seasons (GDD §8) ---------------------------------------------------
+  // Northern-hemisphere calendar seasons keyed off the current month.
+  var SEASONS = [
+    { id: 'winter', label: 'Winter' },
+    { id: 'spring', label: 'Spring' },
+    { id: 'summer', label: 'Summer' },
+    { id: 'autumn', label: 'Autumn' }
+  ];
+
+  function seasonForMonth(month) {
+    // Dec/Jan/Feb winter, Mar–May spring, Jun–Aug summer, Sep–Nov autumn.
+    if (month === 12 || month === 1 || month === 2) return SEASONS[0];
+    if (month >= 3 && month <= 5) return SEASONS[1];
+    if (month >= 6 && month <= 8) return SEASONS[2];
+    return SEASONS[3];
+  }
+
+  function currentSeason() { return seasonForMonth(state.month); }
+
+  // Per-station multiplier on baseline demand for a given season. 1.0 leaves the
+  // baseline spawn distribution untouched; the seasonal cases are the two called
+  // out in §8 (University Quarter quiet in summer, suburbs spike in winter) plus
+  // a modest heritage/tourism summer bump (Old Town's leisure character).
+  function seasonalDemandFactor(station, seasonId) {
+    var d = station.district;
+    if (d === 'University Quarter') {
+      return seasonId === 'summer' ? 0.3 : 1.0;
+    }
+    if (d === 'Suburb North' || d === 'Suburb East' || d === 'Suburb South') {
+      if (seasonId === 'winter') return 1.6;
+      if (seasonId === 'summer') return 0.85;
+      return 1.0;
+    }
+    if (d === 'Heritage/Tourism') {
+      return seasonId === 'summer' ? 1.4 : 0.9;
+    }
+    return 1.0;
+  }
+
   function spawnPassengers() {
     var ids = unlockedStationIds();
     if (ids.length < 2) return;
+    var seasonId = currentSeason().id;
     ids.forEach(function (originId) {
       var queue = state.queues[originId];
-      var spawnCount = Math.floor(Math.random() * (SPAWN_MAX_PER_STATION + 1));
+      var station = stationById(originId);
+      var factor = seasonalDemandFactor(station, seasonId);
+      // Draw the baseline 0..2, then scale by the seasonal factor with
+      // probabilistic rounding. factor === 1 leaves the draw exactly as-is, so
+      // non-seasonal stations behave identically to before.
+      var base = Math.floor(Math.random() * (SPAWN_MAX_PER_STATION + 1));
+      var scaled = base * factor;
+      var spawnCount = Math.floor(scaled);
+      if (Math.random() < scaled - spawnCount) spawnCount += 1;
       for (var i = 0; i < spawnCount; i++) {
         if (queue.length >= QUEUE_MAX_PER_STATION) break;
         var others = ids.filter(function (id) { return id !== originId; });
@@ -242,6 +315,44 @@
       sorted.sort(function (a, b) { return a.spawnMonth - b.spawnMonth; });
     }
     return sorted;
+  }
+
+  // How many whole months a group has been waiting, relative to now.
+  function groupWaitMonths(group) {
+    return Math.max(0, (state.year * 12 + state.month) - group.spawnMonth);
+  }
+
+  // Patience (months) before a group turns unhappy — forgiving on a small
+  // network, tighter as more stations come online (GDD §4).
+  function patienceThreshold() {
+    var n = unlockedStationIds().length;
+    var p = Math.round(BASE_PATIENCE - Math.max(0, n - 2) * PATIENCE_TIGHTEN_PER_STATION);
+    return Math.max(MIN_PATIENCE, Math.min(BASE_PATIENCE, p));
+  }
+
+  function isGroupUnhappy(group) {
+    return groupWaitMonths(group) >= patienceThreshold();
+  }
+
+  // Per-station monthly subsidy for serving an underserved district (GDD §7),
+  // scaled by reputation.
+  function subsidyPerStation() {
+    return Math.round(SUBSIDY_BASE + state.reputation * SUBSIDY_PER_REP);
+  }
+
+  // Whole months / years a train has been in service.
+  function trainAgeMonths(train) {
+    var acquired = (typeof train.acquiredAbs === 'number') ? train.acquiredAbs : (state.year * 12 + state.month);
+    return Math.max(0, (state.year * 12 + state.month) - acquired);
+  }
+
+  // A train's current monthly maintenance, its base cost scaled up by age
+  // (GDD §7). Age 0 == base; capped at AGING_MAX_MULTIPLIER.
+  function effectiveMaintenance(train) {
+    var base = (typeof train.maintenance === 'number') ? train.maintenance : MAINTENANCE_PER_TRAIN;
+    var years = Math.floor(trainAgeMonths(train) / 12);
+    var mult = Math.min(AGING_MAX_MULTIPLIER, 1 + AGING_RATE_PER_YEAR * years);
+    return Math.round(base * mult);
   }
 
   function hasUnlockedNeighbor(stationId) {
@@ -316,7 +427,8 @@
       posIndex: 0,
       dir: 1,
       atStation: unlockedStationIds()[0] || 'central',
-      manifest: []
+      manifest: [],
+      acquiredAbs: state.year * 12 + state.month
     };
     state.trains.push(train);
     saveState();
@@ -335,6 +447,7 @@
       var idx = queue.indexOf(g);
       if (idx !== -1) queue.splice(idx, 1);
     });
+    if (eligible.length > 0) state.servedThisMonth[stationId] = true; // boarding here
   }
 
   function unloadGroupsAtStation(train, stationId) {
@@ -348,6 +461,7 @@
     if (fareCollected > 0) {
       state.cash += fareCollected;
       state.monthlyRevenue += fareCollected;
+      state.servedThisMonth[stationId] = true; // alighting here
     }
   }
 
@@ -382,19 +496,43 @@
   // the caller to display.
   function endMonth() {
     var maintenance = state.trains.reduce(function (sum, t) {
-      return sum + (typeof t.maintenance === 'number' ? t.maintenance : MAINTENANCE_PER_TRAIN);
+      return sum + effectiveMaintenance(t);
     }, 0);
     var unlockedIds = unlockedStationIds();
     var unlockedCount = unlockedIds.length;
     var staff = STAFF_BASE + Math.max(0, unlockedCount - 2) * STAFF_PER_EXTRA_STATION;
+
+    // Passenger happiness: tally groups that have waited past their patience,
+    // and drop the ones fed up enough to abandon the queue entirely (GDD §4).
+    var patience = patienceThreshold();
+    var nowAbs = state.year * 12 + state.month;
+    var unhappyGroups = 0;
+    var abandonedGroups = 0;
+    unlockedIds.forEach(function (id) {
+      var q = state.queues[id] || [];
+      var kept = [];
+      q.forEach(function (g) {
+        var wait = Math.max(0, nowAbs - g.spawnMonth);
+        if (wait >= patience) unhappyGroups++;
+        if (wait >= patience + ABANDON_GRACE) abandonedGroups++;
+        else kept.push(g);
+      });
+      state.queues[id] = kept;
+    });
+
+    // Government subsidies: a per-station bonus (scaled by reputation) for every
+    // underserved district actually served this month (GDD §7).
+    var subsidyStationIds = UNDERSERVED_DISTRICT_STATIONS.filter(function (id) {
+      return state.unlocked[id] && state.servedThisMonth[id];
+    });
+    var perStation = subsidyStationIds.length ? subsidyPerStation() : 0;
+    var subsidy = subsidyStationIds.length * perStation;
+
     var costs = maintenance + staff;
     var revenue = state.monthlyRevenue;
-    var net = revenue - costs;
+    var net = revenue - costs + subsidy;
 
-    var overflowCount = unlockedIds.filter(function (id) {
-      return (state.queues[id] || []).length >= QUEUE_MAX_PER_STATION;
-    }).length;
-    var repDelta = (revenue > 0 ? 1 : 0) - overflowCount;
+    var repDelta = (revenue > 0 ? 1 : 0) - Math.ceil(unhappyGroups / UNHAPPY_PER_REP_POINT);
     state.reputation = Math.max(0, Math.min(100, state.reputation + repDelta));
 
     var summary = {
@@ -403,8 +541,13 @@
       maintenance: maintenance,
       staff: staff,
       costs: costs,
+      subsidy: subsidy,
+      subsidyStations: subsidyStationIds.length,
       net: net,
-      repDelta: repDelta
+      repDelta: repDelta,
+      unhappyGroups: unhappyGroups,
+      abandonedGroups: abandonedGroups,
+      patience: patience
     };
 
     state.cash += net;
@@ -414,6 +557,7 @@
       state.year += 1;
     }
     state.monthlyRevenue = 0;
+    state.servedThisMonth = {};
     spawnPassengers();
     saveState();
     return summary;
@@ -442,6 +586,7 @@
     MAINTENANCE_PER_TRAIN: MAINTENANCE_PER_TRAIN,
     STAFF_BASE: STAFF_BASE,
     STAFF_PER_EXTRA_STATION: STAFF_PER_EXTRA_STATION,
+    UNDERSERVED_DISTRICT_STATIONS: UNDERSERVED_DISTRICT_STATIONS,
     TRAIN_TYPES: TRAIN_TYPES,
     // live state (stable reference)
     state: state,
@@ -457,6 +602,15 @@
     hopDistance: hopDistance,
     computeFare: computeFare,
     unlockedStationIds: unlockedStationIds,
+    seasonForMonth: seasonForMonth,
+    currentSeason: currentSeason,
+    seasonalDemandFactor: seasonalDemandFactor,
+    groupWaitMonths: groupWaitMonths,
+    patienceThreshold: patienceThreshold,
+    isGroupUnhappy: isGroupUnhappy,
+    subsidyPerStation: subsidyPerStation,
+    trainAgeMonths: trainAgeMonths,
+    effectiveMaintenance: effectiveMaintenance,
     sortQueueEntries: sortQueueEntries,
     hasUnlockedNeighbor: hasUnlockedNeighbor,
     checkUnlockRequirements: checkUnlockRequirements,
